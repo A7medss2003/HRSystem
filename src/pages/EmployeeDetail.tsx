@@ -1,15 +1,18 @@
 import { useState } from 'react';
-import { ArrowRight, Save, X, Building, Mail, Phone, MapPin, Briefcase, GraduationCap, Award, FileText, Monitor, Clock, User as UserIcon, Contact, Trash2 } from 'lucide-react';
+import { ArrowRight, Save, X, Building, Mail, Phone, MapPin, Briefcase, GraduationCap, Award, FileText, Monitor, Clock, User as UserIcon, Contact, Trash2, Star, Gift, Download } from 'lucide-react';
 import clsx from 'clsx';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { Employee, Education, Experience, Skill, Contract, Certification, Equipment, Document, AuditLog } from '../types';
 import { toast } from '../components/Toast';
+import { employeeSchema } from '../schema';
+import { z } from 'zod';
 
 interface EmployeeDetailProps {
   employee: Employee | null;
   onBack: () => void;
   onSave: (employee: Employee) => void;
+  initialCategory?: 'موظف أساسي' | 'متعاقد' | 'متعاون';
 }
 
 const defaultEmployee: Employee = {
@@ -132,9 +135,13 @@ const EmptyState = ({ message }: { message: string }) => (
   </div>
 );
 
-export default function EmployeeDetail({ employee, onBack, onSave, readOnly = false, hideBack = false }: EmployeeDetailProps & { readOnly?: boolean, hideBack?: boolean }) {
+import { saveFileToLocal, getFileFromLocal, deleteFileFromLocal } from '../lib/fileStorage';
+import FileImage from '../components/FileImage';
+
+export default function EmployeeDetail({ employee, onBack, onSave, readOnly = false, hideBack = false, initialCategory }: EmployeeDetailProps & { readOnly?: boolean, hideBack?: boolean, initialCategory?: 'موظف أساسي' | 'متعاقد' | 'متعاون' }) {
   const [activeTab, setActiveTab] = useState('basic');
-  const [formData, setFormData] = useState<Employee>(employee || defaultEmployee);
+  const [formData, setFormData] = useState<Employee>(employee || { ...defaultEmployee, employmentCategory: initialCategory || 'موظف أساسي' });
+  const [initialBonus, setInitialBonus] = useState<string>('');
 
   const handleChange = (field: keyof Employee, value: any) => {
     if (readOnly) return;
@@ -142,9 +149,47 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
   };
 
   const handleSave = () => {
-    const updatedData = { ...formData, updatedAt: new Date().toISOString() };
+    try {
+      // Validate form data
+      employeeSchema.parse(formData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const zodError = error as any;
+        // Find the first error and show it
+        const firstError = zodError.issues[0];
+        toast(`خطأ في الإدخال: ${firstError.message}`);
+        
+        // Switch to the appropriate tab based on the error path if needed
+        const field = firstError.path[0] as string;
+        if (['fullName', 'jobTitle', 'department', 'management', 'workEmail', 'workPhone', 'workMobile', 'company'].includes(field)) {
+          setActiveTab('basic');
+        } else if (['personalEmail', 'personalPhone', 'nationalId'].includes(field)) {
+          setActiveTab('personal');
+        }
+        
+        return; // Stop saving
+      }
+    }
+
+    let finalData = { ...formData, updatedAt: new Date().toISOString() };
+    
+    // Process initial bonus if category is collaborator
+    if (!employee && finalData.employmentCategory === 'متعاون' && initialBonus && Number(initialBonus) > 0) {
+      finalData.bonuses = [
+        ...(finalData.bonuses || []),
+        {
+          id: 'bon-' + Date.now(),
+          title: 'مكافأة الانضمام / أولية',
+          amount: Number(initialBonus),
+          date: new Date().toISOString().split('T')[0],
+          reason: 'مكافأة أولية مضافة عند التسجيل',
+          status: 'مصروفة'
+        }
+      ];
+    }
+
     if (!employee) {
-      updatedData.auditLogs = [{
+      finalData.auditLogs = [{
         id: 'aud-' + Date.now(),
         action: 'إنشاء ملف الموظف',
         user: 'admin',
@@ -152,7 +197,7 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
         details: 'تم الإنشاء'
       }];
     } else {
-      updatedData.auditLogs = [...formData.auditLogs, {
+      finalData.auditLogs = [...(formData.auditLogs || []), {
         id: 'aud-' + Date.now(),
         action: 'تحديث بيانات الموظف',
         user: 'admin',
@@ -160,7 +205,7 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
         details: 'تحديث البيانات من واجهة النظام'
       }];
     }
-    onSave(updatedData);
+    onSave(finalData);
     toast('تم حفظ بيانات الموظف بنجاح!');
   };
 
@@ -168,25 +213,29 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
     { id: 'basic', label: 'المعلومات الأساسية', icon: UserIcon },
     { id: 'work', label: 'معلومات العمل', icon: Building },
     { id: 'personal', label: 'المعلومات الشخصية', icon: Contact },
-    { id: 'education', label: 'التعليم', icon: GraduationCap },
+    { id: 'education', label: 'المؤهل العلمي', icon: GraduationCap },
     { id: 'experience', label: 'الخبرات', icon: Briefcase },
     { id: 'skills', label: 'المهارات', icon: Award },
     { id: 'contracts', label: 'العقود', icon: FileText },
-    { id: 'certifications', label: 'الشهادات', icon: Award },
-    { id: 'equipment', label: 'المعدات', icon: Monitor },
+    { id: 'certifications', label: 'شهادات الدورات', icon: Award },
+    { id: 'equipment', label: 'العهدات', icon: Monitor },
     { id: 'documents', label: 'المستندات', icon: FileText },
+    { id: 'performance', label: 'تقييم الأداء', icon: Star },
     { id: 'audit', label: 'سجل النظام', icon: Clock },
   ];
 
   // Helper arrays for Select options
   const statusOptions = ['نشط', 'إجازة', 'موقوف', 'متقاعد', 'مستقيل'].map(v => ({ value: v, label: v }));
+  const employmentCategoryOptions = ['موظف أساسي', 'متعاقد', 'متعاون'].map(v => ({ value: v, label: v }));
   const genderOptions = ['ذكر', 'أنثى'].map(v => ({ value: v, label: v }));
   const maritalOptions = ['أعزب', 'متزوج', 'مطلق', 'أرمل'].map(v => ({ value: v, label: v }));
   const remoteOptions = ['مكتب', 'منزل', 'مختلط'].map(v => ({ value: v, label: v }));
   const skillLevels = ['مبتدئ', 'متوسط', 'متقدم', 'خبير'].map(v => ({ value: v, label: v }));
   const contractStatus = ['ساري', 'منتهي', 'ملغى'].map(v => ({ value: v, label: v }));
   const certStatus = ['سارية', 'منتهية'].map(v => ({ value: v, label: v }));
+  const durationUnits = ['ساعات', 'أيام', 'أسابيع'].map(v => ({ value: v, label: v }));
   const eqStatus = ['جيد', 'صيانة', 'تالف', 'مفقود'].map(v => ({ value: v, label: v }));
+  const performanceLevelOptions = ['ممتاز', 'جيد جداً', 'جيد', 'مقبول', 'يحتاج تحسين'].map(v => ({ value: v, label: v }));
 
   // Handlers for Collections
   const handleAddEducation = () => {
@@ -285,12 +334,12 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
     setFormData(prev => ({
       ...prev,
       certifications: [...prev.certifications, {
-        id: 'cert-' + Date.now(), name: '', issuer: '', issueDate: '', expiryDate: '', status: 'سارية'
+        id: 'cert-' + Date.now(), name: '', curriculum: '', issuer: '', issueDate: '', expiryDate: '', durationValue: undefined, durationUnit: 'ساعات', status: 'سارية'
       }]
     }));
   };
 
-  const handleUpdateCertification = (id: string, field: keyof Certification, value: string) => {
+  const handleUpdateCertification = (id: string, field: keyof Certification, value: any) => {
     setFormData(prev => ({
       ...prev,
       certifications: prev.certifications.map(e => e.id === id ? { ...e, [field]: value } : e)
@@ -330,21 +379,30 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
   const handleAddDocument = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.onchange = (e: any) => {
-      const file = e.target.files[0];
+    input.onchange = async (e: any) => {
+      const file = e.target.files?.[0];
       if (file) {
-        setFormData(prev => ({
-          ...prev,
-          documents: [...prev.documents, {
-            id: 'doc-' + Date.now(), name: file.name, type: file.type || 'ملف', uploadDate: new Date().toISOString()
-          }]
-        }));
+        try {
+          const fileId = await saveFileToLocal(file);
+          setFormData(prev => ({
+            ...prev,
+            documents: [...prev.documents, {
+              id: 'doc-' + Date.now(), name: file.name, type: file.type || 'ملف', uploadDate: new Date().toISOString(), fileId: fileId
+            }]
+          }));
+        } catch (error) {
+          toast('حدث خطأ أثناء حفظ الملف');
+        }
       }
     };
     input.click();
   };
 
   const handleDeleteDocument = (id: string) => {
+    const doc = formData.documents.find(e => e.id === id);
+    if (doc?.fileId) {
+      deleteFileFromLocal(doc.fileId);
+    }
     setFormData(prev => ({
       ...prev,
       documents: prev.documents.filter(e => e.id !== id)
@@ -355,13 +413,31 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    input.onchange = (e: any) => {
-      const file = e.target.files[0];
+    input.onchange = async (e: any) => {
+      const file = e.target.files?.[0];
       if (file) {
-        setFormData(prev => ({ ...prev, photoUrl: URL.createObjectURL(file) }));
+        try {
+          const fileId = await saveFileToLocal(file);
+          setFormData(prev => ({ ...prev, photoUrl: fileId }));
+        } catch (error) {
+          toast('حدث خطأ أثناء حفظ الصورة');
+        }
       }
     };
     input.click();
+  };
+
+  const handleUpdatePerformanceRating = (field: string, value: any) => {
+    if (readOnly) return;
+    setFormData(prev => ({
+      ...prev,
+      performanceRating: {
+        score: 8.5,
+        level: 'جيد جداً',
+        ...(prev.performanceRating || {}),
+        [field]: value
+      }
+    }));
   };
 
   return (
@@ -380,7 +456,7 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
           
           <div className="relative group shrink-0">
             {formData.photoUrl ? (
-              <img src={formData.photoUrl} alt={formData.fullName} className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md group-hover:opacity-80 transition-opacity" />
+              <FileImage src={formData.photoUrl} alt={formData.fullName} className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md group-hover:opacity-80 transition-opacity" />
             ) : (
               <div className="w-16 h-16 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-2xl shadow-md border-2 border-white group-hover:opacity-80 transition-opacity">
                 {formData.fullName ? formData.fullName.charAt(0) : '?'}
@@ -476,11 +552,32 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                 <SelectField readOnly={readOnly} label="حالة الموظف" value={formData.status} onChange={(v: any) => handleChange('status', v)} options={statusOptions} />
+                <SelectField readOnly={readOnly} label="فئة التوظيف" value={formData.employmentCategory || 'موظف أساسي'} onChange={(v: any) => handleChange('employmentCategory', v)} options={employmentCategoryOptions} />
+                
+                {formData.employmentCategory === 'متعاون' && !employee && (
+                  <div className="md:col-span-2 bg-indigo-50/50 border border-indigo-100 p-4 rounded-xl">
+                    <label className="text-xs font-semibold text-indigo-800 block mb-1.5 flex items-center gap-1.5">
+                      <Gift size={14} className="text-indigo-600" />
+                      إضافة مكافأة أولية (اختياري)
+                    </label>
+                    <input 
+                      type="number"
+                      min="0"
+                      disabled={readOnly}
+                      value={initialBonus}
+                      onChange={(e) => setInitialBonus(e.target.value)}
+                      placeholder="أدخل قيمة المكافأة بالدينار الليبي..."
+                      className="w-full bg-white border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm py-2 px-3 transition-all"
+                    />
+                    <p className="text-[10px] text-indigo-500 mt-1.5">سيتم إضافة هذه القيمة كسجل مكافأة تلقائياً عند حفظ بيانات الموظف لأول مرة.</p>
+                  </div>
+                )}
+
                 <InputField readOnly={readOnly} label="الشركة" value={formData.company} onChange={(v: any) => handleChange('company', v)} />
                 <InputField readOnly={readOnly} label="الإدارة" value={formData.management} onChange={(v: any) => handleChange('management', v)} />
                 <InputField readOnly={readOnly} label="القسم" value={formData.department} onChange={(v: any) => handleChange('department', v)} />
                 <InputField readOnly={readOnly} label="المدير المباشر" value={formData.directManager} onChange={(v: any) => handleChange('directManager', v)} />
-                <InputField readOnly={readOnly} label="المشرف (Coach)" value={formData.coach} onChange={(v: any) => handleChange('coach', v)} />
+                <InputField readOnly={readOnly} label="Coach" value={formData.coach} onChange={(v: any) => handleChange('coach', v)} />
                 <InputField readOnly={readOnly} label="العلامات (افصل بينها بفاصلة)" value={formData.tags?.join('، ')} onChange={(v: string) => handleChange('tags', v.split('،').map(t=>t.trim()))} className="md:col-span-2" />
                 
                 <div className="col-span-2 border-t border-slate-100 pt-6 mt-2 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
@@ -541,18 +638,34 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
               </Section>
 
               <Section title="الهوية والمستندات">
-                <InputField readOnly={readOnly} label="الرقم الوطني" value={formData.nationalId} onChange={(v: any) => handleChange('nationalId', v)} dir="ltr" />
-                <InputField readOnly={readOnly} label="رقم جواز السفر" value={formData.passportNo} onChange={(v: any) => handleChange('passportNo', v)} dir="ltr" />
-                <InputField readOnly={readOnly} label="رقم التأشيرة" value={formData.visaNo} onChange={(v: any) => handleChange('visaNo', v)} dir="ltr" />
-                <InputField readOnly={readOnly} label="تاريخ انتهاء التأشيرة" value={formData.visaExpiry} onChange={(v: any) => handleChange('visaExpiry', v)} type="date" dir="ltr" />
-                <InputField readOnly={readOnly} label="رقم تصريح العمل" value={formData.workPermitNo} onChange={(v: any) => handleChange('workPermitNo', v)} dir="ltr" />
-                <InputField readOnly={readOnly} label="تاريخ انتهاء التصريح" value={formData.permitExpiry} onChange={(v: any) => handleChange('permitExpiry', v)} type="date" dir="ltr" />
+                <div className="md:col-span-2">
+                  <InputField readOnly={readOnly} label="الرقم الوطني" value={formData.nationalId} onChange={(v: any) => handleChange('nationalId', v)} dir="ltr" />
+                </div>
+                
+                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-slate-200 pt-5 mt-2">
+                  <InputField readOnly={readOnly} label="رقم جواز السفر" value={formData.passportNo} onChange={(v: any) => handleChange('passportNo', v)} dir="ltr" />
+                  <InputField readOnly={readOnly} label="تاريخ الإصدار" value={formData.passportIssueDate || ''} onChange={(v: any) => handleChange('passportIssueDate', v)} type="date" dir="ltr" />
+                  <InputField readOnly={readOnly} label="تاريخ الانتهاء" value={formData.passportExpiryDate || ''} onChange={(v: any) => handleChange('passportExpiryDate', v)} type="date" dir="ltr" />
+                </div>
+
+                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-slate-200 pt-5 mt-2">
+                  <InputField readOnly={readOnly} label="رقم التأشيرة" value={formData.visaNo} onChange={(v: any) => handleChange('visaNo', v)} dir="ltr" />
+                  <InputField readOnly={readOnly} label="تاريخ الإصدار" value={formData.visaIssueDate || ''} onChange={(v: any) => handleChange('visaIssueDate', v)} type="date" dir="ltr" />
+                  <InputField readOnly={readOnly} label="تاريخ الانتهاء" value={formData.visaExpiry} onChange={(v: any) => handleChange('visaExpiry', v)} type="date" dir="ltr" />
+                </div>
+
+                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-slate-200 pt-5 mt-2">
+                  <InputField readOnly={readOnly} label="رقم تصريح العمل" value={formData.workPermitNo} onChange={(v: any) => handleChange('workPermitNo', v)} dir="ltr" />
+                  <div className="hidden md:block"></div>
+                  <InputField readOnly={readOnly} label="تاريخ الانتهاء" value={formData.permitExpiry} onChange={(v: any) => handleChange('permitExpiry', v)} type="date" dir="ltr" />
+                </div>
               </Section>
 
               <Section title="جهة الاتصال في حالات الطوارئ">
-                <InputField readOnly={readOnly} label="الاسم" value={formData.emergencyContactName} onChange={(v: any) => handleChange('emergencyContactName', v)} />
+                <InputField readOnly={readOnly} label="الاسم (اقرب الاقارب)" value={formData.emergencyContactName} onChange={(v: any) => handleChange('emergencyContactName', v)} />
                 <InputField readOnly={readOnly} label="صلة القرابة" value={formData.emergencyContactRelation} onChange={(v: any) => handleChange('emergencyContactRelation', v)} />
                 <InputField readOnly={readOnly} label="رقم الهاتف" value={formData.emergencyContactPhone} onChange={(v: any) => handleChange('emergencyContactPhone', v)} icon={Phone} dir="ltr" />
+                <InputField readOnly={readOnly} label="رقم هاتف بديل" value={formData.emergencyContactPhone2 || ''} onChange={(v: any) => handleChange('emergencyContactPhone2', v)} icon={Phone} dir="ltr" />
               </Section>
             </div>
           )}
@@ -561,7 +674,7 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
           {activeTab === 'education' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
               <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-                <h2 className="text-xl font-bold text-slate-800">التعليم والمؤهلات</h2>
+                <h2 className="text-xl font-bold text-slate-800">المؤهل العلمي</h2>
                 {!readOnly && <button onClick={handleAddEducation} className="text-sm font-medium text-blue-600 hover:text-blue-800 bg-blue-50 px-4 py-2 rounded-lg transition-colors">إضافة مؤهل</button>}
               </div>
               
@@ -571,7 +684,7 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                     <InputField readOnly={readOnly} label="الدرجة العلمية" value={edu.degree} onChange={(v: any) => handleUpdateEducation(edu.id, 'degree', v)} />
                     <InputField readOnly={readOnly} label="التخصص" value={edu.major} onChange={(v: any) => handleUpdateEducation(edu.id, 'major', v)} />
-                    <InputField readOnly={readOnly} label="المؤسسة التعليمية" value={edu.institution} onChange={(v: any) => handleUpdateEducation(edu.id, 'institution', v)} className="md:col-span-2" />
+                    <InputField readOnly={readOnly} label="الجهة المانحة ومكانها (ليبية أو أجنبية :مثل روسيا بريطانيا)" value={edu.institution} onChange={(v: any) => handleUpdateEducation(edu.id, 'institution', v)} className="md:col-span-2" />
                     <InputField readOnly={readOnly} label="تاريخ البداية" value={edu.startDate} onChange={(v: any) => handleUpdateEducation(edu.id, 'startDate', v)} type="date" dir="ltr" />
                     <InputField readOnly={readOnly} label="تاريخ التخرج" value={edu.gradDate} onChange={(v: any) => handleUpdateEducation(edu.id, 'gradDate', v)} type="date" dir="ltr" />
                     <InputField readOnly={readOnly} label="الوصف" value={edu.description} onChange={(v: any) => handleUpdateEducation(edu.id, 'description', v)} className="md:col-span-2" />
@@ -624,7 +737,7 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
                       <SelectField readOnly={readOnly} label="المستوى" value={skill.level} onChange={(v: any) => handleUpdateSkill(skill.id, 'level', v)} options={skillLevels} />
                       <div className="col-span-2">
                         <label className="text-xs font-semibold text-slate-500 block mb-1.5">نسبة الإتقان ({skill.percentage}%)</label>
-                        <input disabled={readOnly} type="range" min="0" max="100" value={skill.percentage} onChange={(e) => handleUpdateSkill(skill.id, 'percentage', parseInt(e.target.value))} className={clsx("w-full accent-blue-600", readOnly && "opacity-60 cursor-not-allowed")} />
+                        <input disabled={readOnly} type="range" min="0" max="10" step="0.1" value={skill.percentage} onChange={(e) => handleUpdateSkill(skill.id, 'percentage', parseInt(e.target.value))} className={clsx("w-full accent-blue-600", readOnly && "opacity-60 cursor-not-allowed")} />
                       </div>
                     </div>
                   </div>
@@ -666,8 +779,8 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
           {activeTab === 'certifications' && (
              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
              <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-               <h2 className="text-xl font-bold text-slate-800">الشهادات المهنية</h2>
-               {!readOnly && <button onClick={handleAddCertification} className="text-sm font-medium text-blue-600 hover:text-blue-800 bg-blue-50 px-4 py-2 rounded-lg transition-colors">إضافة شهادة</button>}
+               <h2 className="text-xl font-bold text-slate-800">شهادات الدورات</h2>
+               {!readOnly && <button onClick={handleAddCertification} className="text-sm font-medium text-blue-600 hover:text-blue-800 bg-blue-50 px-4 py-2 rounded-lg transition-colors">إضافة شهادة دورة</button>}
              </div>
              
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -675,7 +788,12 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
                   <div key={cert.id} className="p-5 border border-slate-200 rounded-xl bg-slate-50 relative group transition-all hover:border-blue-300">
                     {!readOnly && <button onClick={() => handleDeleteCertification(cert.id)} className="absolute top-2 left-2 p-1.5 text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button>}
                     <div className="grid grid-cols-2 gap-3 mt-2">
-                      <InputField readOnly={readOnly} label="اسم الشهادة" value={cert.name} onChange={(v: any) => handleUpdateCertification(cert.id, 'name', v)} className="col-span-2" />
+                      <InputField readOnly={readOnly} label="اسم الشهادة / الكورس" value={cert.name} onChange={(v: any) => handleUpdateCertification(cert.id, 'name', v)} className="col-span-2" placeholder="مثال: كورس الشبكات" />
+                      <InputField readOnly={readOnly} label="المنهج / الشهادة المنهجية" value={cert.curriculum || ''} onChange={(v: any) => handleUpdateCertification(cert.id, 'curriculum', v)} className="col-span-2" placeholder="مثال: CCNA" />
+                      <div className="col-span-2 grid grid-cols-2 gap-3">
+                        <InputField readOnly={readOnly} label="فترة الدورة (ساعات , أيام , أسابيع)" value={cert.durationValue || ''} onChange={(v: any) => handleUpdateCertification(cert.id, 'durationValue', Number(v) || undefined)} type="number" placeholder="0" />
+                        <SelectField readOnly={readOnly} label="الوحدة" value={cert.durationUnit || 'ساعات'} onChange={(v: any) => handleUpdateCertification(cert.id, 'durationUnit', v)} options={durationUnits} />
+                      </div>
                       <InputField readOnly={readOnly} label="الجهة المانحة" value={cert.issuer} onChange={(v: any) => handleUpdateCertification(cert.id, 'issuer', v)} className="col-span-2" />
                       <InputField readOnly={readOnly} label="تاريخ الإصدار" value={cert.issueDate} onChange={(v: any) => handleUpdateCertification(cert.id, 'issueDate', v)} type="date" dir="ltr" />
                       <InputField readOnly={readOnly} label="تاريخ الانتهاء" value={cert.expiryDate} onChange={(v: any) => handleUpdateCertification(cert.id, 'expiryDate', v)} type="date" dir="ltr" />
@@ -684,7 +802,7 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
                   </div>
                 ))}
              </div>
-             {formData.certifications.length === 0 && <EmptyState message="لا يوجد شهادات مسجلة" />}
+             {formData.certifications.length === 0 && <EmptyState message="لا يوجد شهادات دورات مسجلة" />}
            </div>
           )}
 
@@ -692,8 +810,8 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
           {activeTab === 'equipment' && (
              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
              <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-               <h2 className="text-xl font-bold text-slate-800">المعدات والأصول</h2>
-               {!readOnly && <button onClick={handleAddEquipment} className="text-sm font-medium text-blue-600 hover:text-blue-800 bg-blue-50 px-4 py-2 rounded-lg transition-colors">تخصيص معدات</button>}
+               <h2 className="text-xl font-bold text-slate-800">العهدات</h2>
+               {!readOnly && <button onClick={handleAddEquipment} className="text-sm font-medium text-blue-600 hover:text-blue-800 bg-blue-50 px-4 py-2 rounded-lg transition-colors">تخصيص عهدة</button>}
              </div>
              
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -711,7 +829,7 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
                   </div>
                 ))}
              </div>
-             {formData.equipments.length === 0 && <EmptyState message="لا يوجد معدات مسجلة" />}
+             {formData.equipments.length === 0 && <EmptyState message="لا يوجد عهدات مسجلة" />}
            </div>
           )}
 
@@ -727,6 +845,19 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
                 {formData.documents.map(doc => (
                   <div key={doc.id} className="p-4 border border-slate-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all group text-center flex flex-col items-center relative">
                     {!readOnly && <button onClick={() => handleDeleteDocument(doc.id)} className="absolute top-2 right-2 p-1.5 text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button>}
+                    {doc.fileId ? (
+                       <button onClick={async () => {
+                         const dataUrl = await getFileFromLocal(doc.fileId!);
+                         if(dataUrl) {
+                           const a = document.createElement('a');
+                           a.href = dataUrl;
+                           a.download = doc.name;
+                           a.click();
+                         }
+                       }} className="absolute top-2 left-2 p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                         <Download size={16}/>
+                       </button>
+                    ) : null}
                     <FileText size={40} className="text-slate-300 group-hover:text-blue-500 mb-3 transition-colors" />
                     <p className="font-semibold text-slate-800 text-sm truncate w-full" title={doc.name}>{doc.name}</p>
                     <p className="text-xs text-slate-500 mt-1">{doc.type}</p>
@@ -736,6 +867,76 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
              </div>
              {formData.documents.length === 0 && <EmptyState message="لا يوجد مستندات مسجلة" />}
            </div>
+          )}
+
+          {/* TAB: Performance */}
+          {activeTab === 'performance' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-800">تقييم الأداء والمتابعة</h2>
+                  <p className="text-sm text-slate-500 mt-1">تقييم كفاءة الموظف وتحديد مستوى الأداء العام</p>
+                </div>
+                {formData.performanceRating && (
+                  <div className="flex items-center gap-2 bg-amber-50 text-amber-700 px-4 py-2 rounded-xl border border-amber-200">
+                    <Star size={20} className="text-amber-500 fill-amber-500" />
+                    <span className="font-bold text-lg">{formData.performanceRating.score}/10</span>
+                    <span className="text-sm font-semibold">({formData.performanceRating.level})</span>
+                  </div>
+                )}
+              </div>
+
+              <Section title="تفاصيل تقييم الأداء">
+                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 block mb-1.5">نسبة التقييم (من 10)</label>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      max="10" step="0.1" 
+                      readOnly={readOnly}
+                      value={formData.performanceRating?.score ?? ''} 
+                      onChange={(e) => handleUpdatePerformanceRating('score', Number(e.target.value))}
+                      placeholder="مثال: 9.5" 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm py-2 px-3 transition-all"
+                    />
+                  </div>
+                  <SelectField 
+                    readOnly={readOnly} 
+                    label="مستوى التقييم" 
+                    value={formData.performanceRating?.level || 'ممتاز'} 
+                    onChange={(v: any) => handleUpdatePerformanceRating('level', v)} 
+                    options={performanceLevelOptions} 
+                  />
+                  <InputField 
+                    readOnly={readOnly} 
+                    label="تاريخ التقييم" 
+                    value={formData.performanceRating?.lastEvaluationDate || ''} 
+                    onChange={(v: any) => handleUpdatePerformanceRating('lastEvaluationDate', v)} 
+                    type="date" 
+                    dir="ltr" 
+                  />
+                  <InputField 
+                    readOnly={readOnly} 
+                    label="اسم المُقيّم / المدير المباشر" 
+                    value={formData.performanceRating?.evaluator || ''} 
+                    onChange={(v: any) => handleUpdatePerformanceRating('evaluator', v)} 
+                    placeholder="اسم المسؤول عن التقييم" 
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="text-xs font-semibold text-slate-500 block mb-1.5">ملاحظات التقييم والتوصيات</label>
+                  <textarea 
+                    readOnly={readOnly}
+                    rows={4}
+                    value={formData.performanceRating?.notes || ''} 
+                    onChange={(e) => handleUpdatePerformanceRating('notes', e.target.value)}
+                    placeholder="أدخل ملاحظات حول أداء الموظف، نقاط القوة، ومجالات التطوير..." 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm p-3 transition-all"
+                  />
+                </div>
+              </Section>
+            </div>
           )}
 
           {/* TAB: Audit */}

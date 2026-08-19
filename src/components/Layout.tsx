@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useStore } from '../store';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import EmployeeList from '../pages/EmployeeList';
@@ -8,60 +9,65 @@ import Payroll from '../pages/Payroll';
 import Performance from '../pages/Performance';
 import Recruitment from '../pages/Recruitment';
 import Leaves from '../pages/Leaves';
+import Roles from '../pages/Roles';
 import Attendance from '../pages/Attendance';
+import DeveloperSettings from '../pages/DeveloperSettings';
+import Settings from '../pages/Settings';
 import { mockEmployees, mockLeaves } from '../data';
 import { Employee, LeaveRequest } from '../types';
 
 export default function Layout({ user, onLogout }: { user: { role: string, username: string }, onLogout: () => void }) {
-  const [currentMenu, setCurrentMenu] = useState(user.role === 'employee' ? 'profile' : 'dashboard');
-  const [employees, setEmployees] = useState<Employee[]>(mockEmployees);
-  const [leaves, setLeaves] = useState<LeaveRequest[]>(mockLeaves);
+  const { employees, leaves, addEmployee, updateEmployee } = useStore();
+  const [currentMenu, setCurrentMenu] = useState(user.role === 'employee' ? 'settings' : 'dashboard');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [addingCategory, setAddingCategory] = useState<'موظف أساسي' | 'متعاقد' | 'متعاون'>('موظف أساسي');
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Redirect to correct default page if role changes
   useEffect(() => {
-    if (user.role === 'employee' && !['profile', 'payroll', 'performance', 'leaves', 'attendance'].includes(currentMenu)) {
-      setCurrentMenu('profile');
-    } else if (user.role !== 'employee' && currentMenu === 'profile') {
-      setCurrentMenu('dashboard');
+    if (user.role === 'employee' && !['settings', 'payroll', 'performance', 'leaves', 'attendance'].includes(currentMenu)) {
+      setCurrentMenu('settings');
     }
   }, [user.role, currentMenu]);
 
   const handleSave = (emp: Employee) => {
     if (isAdding) {
-      setEmployees([emp, ...employees]);
+      addEmployee(emp);
       setIsAdding(false);
     } else {
-      setEmployees(employees.map(e => e.id === emp.id ? emp : e));
+      updateEmployee(emp);
     }
     setSelectedEmployeeId(emp.id);
   };
 
   const renderContent = () => {
     // Role-based routing protection
-    if (user.role === 'employee' && !['profile', 'payroll', 'performance', 'leaves', 'attendance'].includes(currentMenu)) {
+    if (user.role === 'employee' && !['settings', 'payroll', 'performance', 'leaves', 'attendance'].includes(currentMenu)) {
       return <div className="text-center p-8 text-red-500">غير مصرح لك بالوصول لهذه الوحدة</div>;
     }
     if (user.role === 'accountant' && currentMenu === 'recruitment') {
       return <div className="text-center p-8 text-red-500">غير مصرح لك بالوصول لهذه الوحدة</div>;
     }
 
-    if (currentMenu === 'dashboard') return <Dashboard employees={employees} />;
+    if (currentMenu === 'dashboard') return <Dashboard />;
     
-    if (currentMenu === 'payroll') return <Payroll employees={employees} user={user} />;
+    if (currentMenu === 'payroll') return <Payroll user={user} />;
     
-    if (currentMenu === 'performance') return <Performance employees={employees} user={user} />;
+    if (currentMenu === 'performance') return <Performance user={user} />;
     
     if (currentMenu === 'recruitment') return <Recruitment user={user} />;
 
-    if (currentMenu === 'leaves') return <Leaves user={user} employees={employees} leaves={leaves} setLeaves={setLeaves} />;
+    if (currentMenu === 'leaves') return <Leaves user={user} />;
 
-    if (currentMenu === 'attendance') return <Attendance user={user} employees={employees} />;
+    if (currentMenu === 'attendance') return <Attendance user={user} />;
 
-    if (currentMenu === 'profile') {
-      const myEmp = employees.find(e => e.employeeId === 'HR-1001') || employees[0]; // mock mapping
-      return <EmployeeDetail employee={myEmp} onSave={handleSave} onBack={() => {}} hideBack={true} readOnly={true} />;
+    if (currentMenu === 'roles' && (user.role === 'admin' || user.role === 'developer')) return <Roles />;
+
+    if (currentMenu === 'dev_settings' && user.role === 'developer') return <DeveloperSettings />;
+
+    if (currentMenu === 'settings') {
+      return <Settings />;
     }
 
     if (currentMenu === 'employees') {
@@ -69,6 +75,7 @@ export default function Layout({ user, onLogout }: { user: { role: string, usern
         return (
           <EmployeeDetail 
             employee={isAdding ? null : employees.find(e => e.id === selectedEmployeeId) || null}
+            initialCategory={addingCategory}
             onSave={handleSave}
             readOnly={user.role === 'accountant'} // Accountants can edit but let's say they can't fully modify everything? Actually prompt says: accountant edits without delete.
             onBack={() => {
@@ -81,10 +88,12 @@ export default function Layout({ user, onLogout }: { user: { role: string, usern
 
       return (
         <EmployeeList 
-          employees={employees}
           userRole={user.role}
           onSelectEmployee={(id) => setSelectedEmployeeId(id)} 
-          onAddEmployee={() => setIsAdding(true)}
+          onAddEmployee={(cat = 'موظف أساسي') => {
+            setAddingCategory(cat);
+            setIsAdding(true);
+          }}
         />
       );
     }
@@ -107,28 +116,49 @@ export default function Layout({ user, onLogout }: { user: { role: string, usern
     }
   };
 
+  const customBg = localStorage.getItem('app_bg');
+
   return (
-    <div className="min-h-screen bg-slate-50 font-sans" dir="rtl">
-      <Sidebar 
-        currentMenu={currentMenu} 
-        setCurrentMenu={(menu) => {
-          setCurrentMenu(menu);
-          setSelectedEmployeeId(null);
-          setIsAdding(false);
-        }} 
-        user={user}
-        onLogout={onLogout}
-      />
-      <div className="mr-64 transition-all flex flex-col min-h-screen">
+    <div 
+      className="min-h-screen bg-slate-50 font-sans relative" 
+      dir="rtl"
+      style={customBg ? { backgroundImage: `url(${customBg})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' } : {}}
+    >
+      {customBg && <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm z-0 pointer-events-none"></div>}
+      
+      <div className="relative z-10">
+        <Sidebar 
+          currentMenu={currentMenu} 
+          setCurrentMenu={(menu) => {
+            setCurrentMenu(menu);
+            setSelectedEmployeeId(null);
+            setIsAdding(false);
+          }} 
+          user={user}
+          onLogout={onLogout}
+          isCollapsed={isCollapsed}
+          toggleCollapse={() => setIsCollapsed(!isCollapsed)}
+        />
+      <div className={`transition-all duration-300 flex flex-col min-h-screen relative ${isCollapsed ? 'mr-20' : 'mr-64'}`}>
+        {/* Background Watermark */}
+        <div 
+          className={`pointer-events-none fixed inset-0 z-0 opacity-[0.03] transition-all duration-300 ${isCollapsed ? 'mr-20' : 'mr-64'}`}
+          style={{
+            backgroundImage: `url(${localStorage.getItem('app_logo') || import.meta.env.BASE_URL + 'logo.png'})`,
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            backgroundSize: '50% auto'
+          }}
+        />
+        
         <Topbar 
           user={user} 
-          employees={employees} 
-          leaves={leaves} 
           onNavigate={handleNavigate} 
         />
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-8 relative z-0">
           {renderContent()}
         </main>
+      </div>
       </div>
     </div>
   );

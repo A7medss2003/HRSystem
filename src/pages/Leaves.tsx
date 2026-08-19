@@ -4,17 +4,10 @@ import { Employee, LeaveRequest } from '../types';
 import clsx from 'clsx';
 import { toast } from '../components/Toast';
 
-export default function Leaves({ 
-  user, 
-  employees, 
-  leaves, 
-  setLeaves 
-}: { 
-  user: { role: string, username: string }, 
-  employees: Employee[], 
-  leaves: LeaveRequest[], 
-  setLeaves: React.Dispatch<React.SetStateAction<LeaveRequest[]>> 
-}) {
+import { useStore } from '../store';
+
+export default function Leaves({ user }: { user: { role: string, username: string } }) {
+  const { employees, leaves, addLeave, updateLeave } = useStore();
   const [showModal, setShowModal] = useState(false);
   const [newLeave, setNewLeave] = useState({ type: 'إجازة سنوية', startDate: '', endDate: '', reason: '' });
 
@@ -25,7 +18,10 @@ export default function Leaves({
 
   const handleStatusChange = (id: string, newStatus: 'Approved' | 'Rejected') => {
     const targetLeave = leaves.find(l => l.id === id);
-    setLeaves(leaves.map(l => l.id === id ? { ...l, status: newStatus } : l));
+    const leaveToUpdate = leaves.find(l => l.id === id);
+    if (leaveToUpdate) {
+      updateLeave({ ...leaveToUpdate, status: newStatus });
+    }
     toast(`إشعار للموظف (${targetLeave?.employeeName}): ${newStatus === 'Approved' ? 'تمت الموافقة على طلب الإجازة الخاص بك' : 'تم رفض طلب الإجازة الخاص بك'}`);
   };
 
@@ -41,7 +37,7 @@ export default function Leaves({
       status: 'Pending',
       reason: newLeave.reason
     };
-    setLeaves([newRequest, ...leaves]);
+    addLeave(newRequest);
     setShowModal(false);
     setNewLeave({ type: 'إجازة سنوية', startDate: '', endDate: '', reason: '' });
     toast('تم تقديم طلب الإجازة بنجاح');

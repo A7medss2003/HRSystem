@@ -6,7 +6,7 @@ export const mockEmployees: Employee[] = [
     employeeId: 'HR-1001',
     fullName: 'أحمد علي محمد',
     jobTitle: 'مهندس برمجيات',
-    company: 'الشركة الليبية للتقنية',
+    company: 'مركز البنيان',
     tags: ['دوام كامل', 'تطوير'],
     workEmail: 'ahmed.m@libyatech.ly',
     workPhone: '0213601234',
@@ -38,6 +38,8 @@ export const mockEmployees: Employee[] = [
     childrenCount: 2,
     nationalId: '119880123456',
     passportNo: 'P1234567',
+    passportIssueDate: '2022-01-10',
+    passportExpiryDate: '2027-01-10',
     visaNo: '',
     workPermitNo: '',
     visaExpiry: '',
@@ -45,6 +47,24 @@ export const mockEmployees: Employee[] = [
     emergencyContactName: 'سارة محمد',
     emergencyContactRelation: 'زوجة',
     emergencyContactPhone: '0921112233',
+    emergencyContactPhone2: '0918889900',
+    emergencyContactRelativePhone: '0923334455',
+    employmentCategory: 'موظف أساسي',
+    performanceRating: {
+      score: 9.6,
+      level: 'ممتاز',
+      lastEvaluationDate: '2026-06-30'
+    },
+    bonuses: [
+      {
+        id: 'bon-1',
+        title: 'مكافأة إنجاز مشروع التقييم',
+        amount: 500,
+        date: '2026-06-25',
+        reason: 'تسليم المشروع قبل الموعد المحدد',
+        status: 'مصروفة'
+      }
+    ],
     status: 'نشط',
     linkedUser: 'ahmed.ali',
     createdAt: '2023-01-10T10:00:00Z',
@@ -56,6 +76,8 @@ export const mockEmployees: Employee[] = [
         id: 'edu-1',
         degree: 'بكالوريوس هندسة حاسوب',
         institution: 'جامعة طرابلس',
+        institutionType: 'ليبية',
+        country: 'ليبيا',
         major: 'هندسة برمجيات',
         startDate: '2006-09-01',
         gradDate: '2011-07-15',
@@ -94,10 +116,24 @@ export const mockEmployees: Employee[] = [
     certifications: [
       {
         id: 'cert-1',
-        name: 'AWS Certified Developer',
+        name: 'كورس الشبكات المتقدمة',
+        curriculum: 'Cisco CCNA (200-301)',
+        issuer: 'Cisco Networking Academy',
+        issueDate: '2023-05-10',
+        expiryDate: '2026-05-10',
+        durationValue: 8,
+        durationUnit: 'أسابيع',
+        status: 'سارية',
+      },
+      {
+        id: 'cert-2',
+        name: 'دورة الحوسبة السحابية',
+        curriculum: 'AWS Certified Developer Associate',
         issuer: 'Amazon Web Services',
         issueDate: '2022-05-10',
         expiryDate: '2025-05-10',
+        durationValue: 40,
+        durationUnit: 'ساعات',
         status: 'سارية',
       },
     ],
@@ -165,6 +201,17 @@ export const mockEmployees: Employee[] = [
     emergencyContactName: 'محمود عبدالله',
     emergencyContactRelation: 'أب',
     emergencyContactPhone: '0910001122',
+    employmentCategory: 'متعاون',
+    bonuses: [
+      {
+        id: 'bon-2',
+        title: 'مكافأة إغلاق ميزانية',
+        amount: 800,
+        date: '2026-07-15',
+        reason: 'الانتهاء من أعمال الميزانية للربع الثاني',
+        status: 'مصروفة'
+      }
+    ],
     status: 'نشط',
     linkedUser: 'fatima.m',
     createdAt: '2022-03-01T08:00:00Z',

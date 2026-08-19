@@ -1,63 +1,66 @@
-import { useState } from 'react';
-import { Star, Search, MessageSquare } from 'lucide-react';
-import { Employee } from '../types';
+import React, { useState } from 'react';
+import { Star, Search, MessageSquare, Plus } from 'lucide-react';
+import { useStore } from '../store';
+import { toast } from '../components/Toast';
+import { PerformanceReview } from '../types';
 
-export default function Performance({ employees, user }: { employees: Employee[], user: { role: string, username: string } }) {
+export default function Performance({ user }: { user: { role: string, username: string } }) {
+  const { employees, performanceReviews, addPerformanceReview } = useStore();
+  const [search, setSearch] = useState('');
   
-  const generateReviews = () => {
-    let targetEmployees = employees;
-    if (user.role === 'employee') {
-      targetEmployees = employees.slice(0, 1);
-    }
-    
-    return targetEmployees.map(emp => ({
-      id: `rev-${emp.id}`,
-      employee: emp,
-      period: 'الربع الأول 2024',
-      reviewer: emp.directManager || 'المدير العام',
-      rating: 4.5,
-      comments: 'أداء ممتاز والتزام عالي بالمواعيد. يحتاج إلى تطوير مهارات التواصل قليلاً.',
-    }));
-  };
-
-  const reviews = generateReviews();
+  const filteredReviews = performanceReviews.filter(r => 
+    (user.role === 'admin' || user.role === 'developer' || r.employeeName === user.username) &&
+    (r.employeeName.includes(search) || r.employeeId.includes(search))
+  );
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-2xl font-bold text-slate-800 tracking-tight">تقييم الأداء</h1>
+        {['admin', 'developer'].includes(user.role) && (
+          <button onClick={() => toast('سيتم إضافة نموذج التقييم قريباً')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium shadow-sm">
+            <Plus size={16} />
+            تقييم جديد
+          </button>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {reviews.map(rev => (
-          <div key={rev.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
-                    {rev.employee.fullName ? rev.employee.fullName.charAt(0) : '?'}
-                 </div>
-                 <div>
-                   <h3 className="font-bold text-slate-800">{rev.employee.fullName}</h3>
-                   <p className="text-xs text-slate-500">{rev.employee.jobTitle}</p>
-                 </div>
-              </div>
-              <div className="flex items-center gap-1 bg-amber-50 px-2 py-1 rounded text-amber-600 font-bold font-mono">
-                <Star size={16} fill="currentColor" />
-                <span>{rev.rating}</span>
-              </div>
-            </div>
-            
-            <div className="bg-slate-50 p-4 rounded-lg text-sm text-slate-700 leading-relaxed mb-4">
-              <MessageSquare size={16} className="inline-block ml-2 text-slate-400" />
-              "{rev.comments}"
-            </div>
-
-            <div className="flex justify-between items-center text-xs text-slate-500 border-t border-slate-100 pt-4">
-              <span>الفترة: <strong className="text-slate-700">{rev.period}</strong></span>
-              <span>المُقيّم: <strong className="text-slate-700">{rev.reviewer}</strong></span>
-            </div>
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-4 border-b border-slate-200 bg-slate-50">
+          <div className="relative w-full sm:w-96">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="البحث في التقييمات..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-4 pr-10 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+            />
           </div>
-        ))}
+        </div>
+        <div className="p-4">
+          {filteredReviews.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredReviews.map(r => (
+                <div key={r.id} className="border border-slate-200 p-4 rounded-lg shadow-sm">
+                  <div className="flex justify-between mb-2">
+                    <h3 className="font-bold text-slate-800">{r.employeeName}</h3>
+                    <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded font-bold">{r.period}</span>
+                  </div>
+                  <div className="flex items-center gap-1 mb-3 text-amber-500">
+                    {[...Array(10)].map((_, i) => (
+                      <Star key={i} size={16} fill={i < Math.floor(r.rating) ? 'currentColor' : 'none'} />
+                    ))}
+                    <span className="text-sm text-slate-600 mr-2">{r.rating} / 10</span>
+                  </div>
+                  <p className="text-sm text-slate-600"><MessageSquare size={14} className="inline ml-1"/> {r.comments}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-slate-400">لا توجد تقييمات سابقة</div>
+          )}
+        </div>
       </div>
     </div>
   );

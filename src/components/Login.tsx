@@ -6,6 +6,8 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
   const [password, setPassword] = useState('1234');
   const [error, setError] = useState('');
 
+  const customLogo = localStorage.getItem('app_logo');
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== '1234') {
@@ -18,6 +20,7 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
     if (un === 'admin') role = 'admin';
     else if (un === 'accountant') role = 'accountant';
     else if (un === 'employee') role = 'employee';
+    else if (un === 'developer' || un === 'dev') role = 'developer';
     else {
       setError('المستخدم غير موجود. استخدم: admin, accountant, أو employee');
       return;
@@ -27,14 +30,26 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans" dir="rtl">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-        <div className="bg-blue-600 p-8 text-center">
-          <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
-            <ShieldCheck size={32} className="text-white" />
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans relative overflow-hidden" dir="rtl">
+      {/* Background Watermark */}
+      <div 
+        className="absolute inset-0 z-0 opacity-5 pointer-events-none"
+        style={{
+          backgroundImage: `url(${customLogo || import.meta.env.BASE_URL + 'logo.png'})`,
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          backgroundSize: '50% auto'
+        }}
+      />
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative z-10">
+        <div className="bg-blue-600 p-8 text-center relative overflow-hidden">
+          <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: `url(${customLogo || import.meta.env.BASE_URL + 'logo.png'})`, backgroundPosition: 'center', backgroundSize: 'cover' }}></div>
+          <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl overflow-hidden relative z-10 p-2">
+            <img src={customLogo || `${import.meta.env.BASE_URL}logo.png`} alt="Logo" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }} />
+            <ShieldCheck size={40} className="text-blue-600 hidden" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">نظام إدارة الموارد البشرية</h1>
-          <p className="text-blue-100 text-sm">قم بتسجيل الدخول للوصول إلى النظام</p>
+          <h1 className="text-2xl font-bold text-white mb-2 relative z-10">مركز البنيان</h1>
+          <p className="text-blue-100 text-sm relative z-10">نظام إدارة الموارد البشرية</p>
         </div>
         
         <div className="p-8">
@@ -54,7 +69,6 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
                   value={username}
                   onChange={e => setUsername(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pr-10 pl-4 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                  placeholder="admin / accountant / employee"
                   dir="ltr"
                 />
               </div>
@@ -69,7 +83,6 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pr-10 pl-4 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                  placeholder="1234"
                   dir="ltr"
                 />
               </div>
@@ -80,14 +93,7 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
             </button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-slate-100">
-            <p className="text-xs text-slate-500 text-center mb-3">حسابات تجريبية (كلمة المرور: 1234)</p>
-            <div className="grid grid-cols-3 gap-2">
-              <button onClick={() => setUsername('admin')} className="text-xs py-2 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-mono">admin</button>
-              <button onClick={() => setUsername('accountant')} className="text-xs py-2 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-mono">accountant</button>
-              <button onClick={() => setUsername('employee')} className="text-xs py-2 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-mono">employee</button>
-            </div>
-          </div>
+
         </div>
       </div>
     </div>

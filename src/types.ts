@@ -7,6 +7,8 @@ export interface Education {
   id: string;
   degree: string;
   institution: string;
+  institutionType?: 'ليبية' | 'أجنبية';
+  country?: string;
   major: string;
   startDate: string;
   gradDate: string;
@@ -46,10 +48,30 @@ export interface Contract {
 export interface Certification {
   id: string;
   name: string;
+  curriculum?: string;
   issuer: string;
   issueDate: string;
   expiryDate: string;
+  durationValue?: number;
+  durationUnit?: 'ساعات' | 'أيام' | 'أسابيع';
   status: 'سارية' | 'منتهية';
+}
+
+export interface Bonus {
+  id: string;
+  title: string;
+  amount: number;
+  date: string;
+  reason: string;
+  status: 'مصروفة' | 'معلقة';
+}
+
+export interface PerformanceRating {
+  score: number;
+  level: 'ممتاز' | 'جيد جداً' | 'جيد' | 'مقبول' | 'يحتاج تحسين';
+  lastEvaluationDate?: string;
+  evaluator?: string;
+  notes?: string;
 }
 
 export interface Equipment {
@@ -67,6 +89,7 @@ export interface Document {
   name: string;
   type: string;
   uploadDate: string;
+  fileId?: string;
 }
 
 export interface AuditLog {
@@ -130,13 +153,18 @@ export interface Employee {
   childrenCount: number;
   nationalId: string;
   passportNo: string;
+  passportIssueDate?: string;
+  passportExpiryDate?: string;
   visaNo: string;
-  workPermitNo: string;
+  visaIssueDate?: string;
   visaExpiry: string;
+  workPermitNo: string;
   permitExpiry: string;
   emergencyContactName: string;
   emergencyContactRelation: string;
   emergencyContactPhone: string;
+  emergencyContactPhone2?: string;
+  emergencyContactRelativePhone?: string;
 
   // Collections
   educations: Education[];
@@ -147,12 +175,68 @@ export interface Employee {
   equipments: Equipment[];
   documents: Document[];
   auditLogs: AuditLog[];
+  bonuses?: Bonus[];
 
   // System Data
   employeeId: string;
+  employmentCategory?: 'موظف أساسي' | 'متعاقد' | 'متعاون';
   status: EmployeeStatus;
+  performanceRating?: PerformanceRating;
   linkedUser: string;
   createdAt: string;
   updatedAt: string;
   createdBy: string;
+}
+
+export interface RoleDef {
+  id: string;
+  name: string;
+  permissions: string[];
+}
+
+export interface AttendanceMovement {
+  id: string;
+  type: 'in' | 'out';
+  time: string;
+  minutesFromMidnight: number;
+  note?: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  date: string;
+  status: 'Present' | 'Late' | 'Absent' | 'Leave';
+  movements: AttendanceMovement[];
+}
+
+export interface Candidate {
+  id: string;
+  name: string;
+  position: string;
+  stage: 'new' | 'screening' | 'interview' | 'offer' | 'rejected' | 'hired';
+  dateAdded: string;
+}
+
+export interface PayrollRecord {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  period: string;
+  basic: number;
+  allowances: number;
+  deductions: number;
+  net: number;
+  status: string;
+}
+
+export interface PerformanceReview {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  period: string;
+  reviewer: string;
+  rating: number;
+  comments: string;
 }

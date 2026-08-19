@@ -3,21 +3,32 @@ import React, { useEffect, useState, useRef } from 'react';
 import { toast } from './Toast';
 import { Employee, LeaveRequest } from '../types';
 
+import { useStore } from '../store';
+
 export default function Topbar({ 
   user, 
-  employees = [], 
-  leaves = [], 
   onNavigate 
 }: { 
   user: { role: string, username: string }, 
-  employees?: Employee[], 
-  leaves?: LeaveRequest[], 
   onNavigate?: (menu: string, employeeId?: string) => void 
 }) {
+  const { employees, leaves, setGlobalSearchQuery, globalSearchQuery } = useStore();
   const [time, setTime] = useState(new Date());
-  const [dismissedIds, setDismissedIds] = useState<string[]>([]);
+
+  const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('dismissed_notifications');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [showNotifications, setShowNotifications] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem('dismissed_notifications', JSON.stringify(dismissedIds));
+  }, [dismissedIds]);
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -41,10 +52,23 @@ export default function Topbar({
     return 'موظف';
   };
 
-  const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      toast('سيتم تفعيل ميزة البحث الشامل قريباً');
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setGlobalSearchQuery(val);
+    if (val.trim() !== '' && onNavigate) {
+      onNavigate('employees');
     }
+  };
+
+  const handleProfileClick = () => {
+    if (!onNavigate) return;
+    
+    // ربط الحسابات الوهمية (Demo) بملفات موظفين فعلية للتجربة
+    let myEmpId = 'emp-1'; // افتراضياً لمدير النظام
+    if (user.role === 'accountant') myEmpId = 'emp-2';
+    if (user.role === 'employee') myEmpId = 'emp-3';
+    
+    onNavigate('employees', myEmpId);
   };
 
   // Base date for mock calculations (July 9, 2026 to align with mock database timelines)
@@ -55,15 +79,26 @@ export default function Topbar({
   const generatedNotifications = (() => {
     const list: {
       id: string;
-      type: 'contract_expire' | 'contract_expired' | 'leave_active' | 'leave_upcoming' | 'leave_pending';
+      type: 'contract_expire' | 'contract_expired' | 'leave_active' | 'leave_upcoming' | 'leave_pending' | 'system';
       title: string;
       description: string;
       date: string;
       severity: 'high' | 'medium' | 'info';
       employeeId?: string;
-      linkMenu: 'employees' | 'leaves';
+      linkMenu: 'employees' | 'leaves' | 'settings' | 'dev_settings';
     }[] = [];
 
+    // System Updates / Fixes announcements
+    list.push({
+      id: 'sys-update-101',
+      type: 'system',
+      title: 'تحديث النظام وإصلاح أخطاء',
+      description: 'تم إصلاح مشكلة اختفاء الإشعارات بعد التحديث، وتم إضافة أدوات جديدة للمطورين لحل مشاكل الملفات وتفريغ المساحة.',
+      date: new Date().toISOString().split('T')[0],
+      severity: 'info',
+      linkMenu: 'settings'
+    });
+    
     // 1. Scan employee contracts
     employees.forEach(emp => {
       emp.contracts?.forEach(contract => {
@@ -157,15 +192,16 @@ export default function Topbar({
   })();
 
   return (
-    <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-10 flex items-center justify-between px-8" dir="rtl">
+    <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 flex items-center justify-between px-8" dir="rtl">
       <div className="flex items-center gap-4 flex-1">
         {user.role !== 'employee' && (
           <div className="relative w-full max-w-md">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input 
               type="text" 
-              placeholder="بحث في النظام (اضغط Enter)..." 
-              onKeyDown={handleSearch}
+              placeholder="البحث عن موظف..." 
+              value={globalSearchQuery || ''}
+              onChange={handleSearchChange}
               className="w-full pl-4 pr-10 py-2 bg-slate-100 border-none rounded-full focus:ring-2 focus:ring-blue-500 outline-none text-sm"
             />
           </div>
@@ -268,7 +304,7 @@ export default function Topbar({
           )}
         </div>
 
-        <div onClick={() => toast('سيتم تفعيل صفحة الملف الشخصي قريباً')} className="flex items-center gap-3 pl-4 border-r border-slate-200 cursor-pointer">
+        <div onClick={handleProfileClick} className="flex items-center gap-3 pl-4 border-r border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors p-2 rounded-lg" title="عرض وتعديل بياناتي الشخصية">
           <div className="text-left hidden md:block">
             <p className="text-sm font-semibold text-slate-700 leading-none">{getRoleName(user.role)}</p>
             <p className="text-xs text-slate-500 mt-1" dir="ltr">{user.username}</p>
