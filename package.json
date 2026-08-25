@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
+    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:5173 && set NODE_ENV=development && electron .\"",
     "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
@@ -45,18 +45,36 @@
     "vite": "^6.2.3",
     "wait-on": "^9.1.0"
   },
-  "main": "electron/main.cjs",
+  "main": "electron-main.cjs",
   "build": {
     "appId": "com.hrsystem.app",
     "productName": "HR System",
-    "icon": "public/logo.png",
     "directories": {
-      "output": "dist_electron"
+      "output": "release"
     },
-    "files": [
-      "dist/**/*",
-      "electron/**/*",
-      "package.json"
-    ]
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "http://127.0.0.1"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "نظام الموارد البشرية"
+    }
   }
 }

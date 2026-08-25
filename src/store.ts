@@ -28,11 +28,15 @@ interface AppState {
   updateCandidate: (candidate: Candidate) => void;
   setPayrolls: (payrolls: PayrollRecord[]) => void;
   addPerformanceReview: (review: PerformanceReview) => void;
+  backupPath: string | null;
+  setBackupPath: (path: string | null) => void;
 }
 
 export const useStore = create<AppState>()(
   persist(
     (set) => ({
+      backupPath: null,
+      setBackupPath: (path) => set({ backupPath: path }),
       employees: mockEmployees,
       leaves: mockLeaves,
       roles: [
@@ -56,6 +60,10 @@ export const useStore = create<AppState>()(
       })),
       deleteEmployee: (id) => set((state) => ({
         employees: state.employees.filter((e) => e.id !== id),
+        leaves: state.leaves.filter((l) => l.employeeId !== id),
+        attendanceRecords: state.attendanceRecords.filter((a) => a.employeeId !== id),
+        payrolls: state.payrolls.filter((p) => p.employeeId !== id),
+        performanceReviews: state.performanceReviews.filter((pr) => pr.employeeId !== id)
       })),
       
       addLeave: (leave) => set((state) => ({ leaves: [leave, ...state.leaves] })),

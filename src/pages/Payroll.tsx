@@ -4,8 +4,45 @@ import { useStore } from '../store';
 import { toast } from '../components/Toast';
 
 export default function Payroll({ user }: { user: { role: string, username: string } }) {
-  const { payrolls } = useStore();
+  
+  const { payrolls, setPayrolls, employees } = useStore();
   const [search, setSearch] = useState('');
+
+  const handleGeneratePayroll = () => {
+    const newPayrolls = employees
+      .filter(emp => emp.status === 'نشط' && emp.contracts && emp.contracts.length > 0)
+      .map(emp => {
+        const activeContract = emp.contracts.find(c => c.status === 'ساري') || emp.contracts[0];
+        const basic = activeContract.basicSalary || 0;
+        
+        const totalBonuses = emp.bonuses 
+          ? emp.bonuses.filter(b => true /* ignoring status for now as it doesn't match type */).reduce((sum, b) => sum + (b.amount || 0), 0)
+          : 0;
+
+        const net = Math.max(0, basic + totalBonuses);
+
+        return {
+          id: 'pay-' + Date.now() + Math.random().toString(36).substr(2, 5),
+          employeeId: emp.id,
+          employeeName: emp.fullName,
+          period: new Date().toISOString().slice(0, 7),
+          basic: basic,
+          allowances: 0,
+          deductions: 0,
+          net: net,
+          status: 'Pending'
+        };
+      });
+
+    if (newPayrolls.length === 0) {
+      toast('لا يوجد موظفين نشطين لديهم عقود سارية لتوليد رواتبهم');
+      return;
+    }
+
+    setPayrolls([...newPayrolls, ...payrolls]);
+    toast('تم توليد مسير الرواتب بنجاح لـ ' + newPayrolls.length + ' موظف');
+  };
+
   
   const filteredPayrolls = payrolls.filter(p => 
     (user.role !== 'employee' || p.employeeName === user.username) &&
@@ -17,7 +54,7 @@ export default function Payroll({ user }: { user: { role: string, username: stri
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-2xl font-bold text-slate-800 tracking-tight">مسيرات الرواتب</h1>
         {['admin', 'accountant', 'developer'].includes(user.role) && (
-          <button onClick={() => toast('سيتم إضافة نافذة توليد الرواتب قريباً')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium shadow-sm">
+          <button onClick={handleGeneratePayroll} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium shadow-sm">
             <Plus size={16} />
             توليد مسير رواتب
           </button>

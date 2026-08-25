@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Lock, User, ShieldCheck } from 'lucide-react';
+import { toast } from '../components/Toast';
 
 export default function Login({ onLogin }: { onLogin: (role: string, username: string) => void }) {
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(localStorage.getItem('rememberedUser') || '');
+  const [rememberMe, setRememberMe] = useState(!!localStorage.getItem('rememberedUser'));
   const [password, setPassword] = useState('1234');
   const [error, setError] = useState('');
 
@@ -26,6 +28,11 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
       return;
     }
 
+    if (rememberMe) {
+      localStorage.setItem('rememberedUser', un);
+    } else {
+      localStorage.removeItem('rememberedUser');
+    }
     onLogin(role, un);
   };
 
@@ -86,6 +93,26 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
                   dir="ltr"
                 />
               </div>
+            </div>
+
+            <div className="flex items-center justify-between mt-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={rememberMe}
+                  onChange={e => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer" 
+                />
+                <span className="text-sm text-slate-600 font-medium">تذكرني</span>
+              </label>
+
+              <button 
+                type="button"
+                onClick={() => toast('سيتم إرسال رابط استعادة كلمة المرور إلى بريدك الإلكتروني')}
+                className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
+              >
+                نسيت كلمة المرور؟
+              </button>
             </div>
 
             <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200">

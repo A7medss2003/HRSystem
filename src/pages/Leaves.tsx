@@ -27,6 +27,10 @@ export default function Leaves({ user }: { user: { role: string, username: strin
 
   const handleAddLeave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (new Date(newLeave.endDate) < new Date(newLeave.startDate)) {
+      toast('تاريخ النهاية يجب أن يكون بعد تاريخ البداية');
+      return;
+    }
     const newRequest: LeaveRequest = {
       id: Date.now().toString(),
       employeeId: 'HR-1001', // Mocking current user ID

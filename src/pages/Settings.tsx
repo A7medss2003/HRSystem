@@ -1,7 +1,17 @@
 import React from 'react';
-import { Settings as SettingsIcon, Bell, Shield, Key } from 'lucide-react';
+import { Settings as SettingsIcon, Bell, Shield, Key, HardDrive } from 'lucide-react';
+import { useStore } from '../store';
+import { toast } from '../components/Toast';
 
 export default function Settings() {
+  const { backupPath, setBackupPath } = useStore();
+  const [bPath, setBPath] = React.useState(backupPath || '');
+
+  const handleSaveBackup = () => {
+    setBackupPath(bPath);
+    toast('تم تحديث مسار النسخ الاحتياطي');
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
@@ -15,6 +25,35 @@ export default function Settings() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2 mb-4">
+            <HardDrive size={20} className="text-blue-500" />
+            النسخ الاحتياطي (للأجهزة المحلية)
+          </h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">مسار النسخة الاحتياطية (مثل D:\Backup)</label>
+              <div className="flex gap-2">
+                <input 
+                  type="text"
+                  dir="ltr"
+                  value={bPath}
+                  onChange={(e) => setBPath(e.target.value)}
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button 
+                  onClick={handleSaveBackup}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium"
+                >
+                  حفظ
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">يُستخدم هذا المسار لحفظ نسخة من بيانات البرنامج في حالة تشغيله كبرنامج سطح مكتب مستقل.</p>
+            </div>
+          </div>
+        </div>
+
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2 mb-4">
             <Bell size={20} className="text-blue-500" />

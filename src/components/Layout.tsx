@@ -13,6 +13,7 @@ import Roles from '../pages/Roles';
 import Attendance from '../pages/Attendance';
 import DeveloperSettings from '../pages/DeveloperSettings';
 import Settings from '../pages/Settings';
+import BackupModal from './BackupModal';
 import { mockEmployees, mockLeaves } from '../data';
 import { Employee, LeaveRequest } from '../types';
 
@@ -159,7 +160,8 @@ export default function Layout({ user, onLogout }: { user: { role: string, usern
           {renderContent()}
         </main>
       </div>
-      </div>
+      <BackupModal userRole={user.role} />
     </div>
+  </div>
   );
 }

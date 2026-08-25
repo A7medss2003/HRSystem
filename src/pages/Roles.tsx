@@ -22,7 +22,7 @@ export default function Roles() {
   const [editName, setEditName] = useState('');
   const [editPermissions, setEditPermissions] = useState<string[]>([]);
 
-  const handleEdit = (role: Role) => {
+  const handleEdit = (role: RoleDef) => {
     setEditingId(role.id);
     setEditName(role.name);
     setEditPermissions([...role.permissions]);
