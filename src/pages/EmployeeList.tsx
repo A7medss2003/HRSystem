@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Plus, Filter, FileSpreadsheet, ChevronLeft, Star, X, Save, Gift } from 'lucide-react';
+import { Search, Plus, Filter, FileSpreadsheet, ChevronLeft, Star, X, Save, Gift, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { EmployeeStatus, Employee } from '../types';
 import { toast } from '../components/Toast';
@@ -14,7 +14,7 @@ interface EmployeeListProps {
 }
 
 export default function EmployeeList({ userRole, onSelectEmployee, onAddEmployee }: EmployeeListProps) {
-  const { employees, updateEmployee, globalSearchQuery, setGlobalSearchQuery } = useStore();
+  const { employees, updateEmployee, deleteEmployee, globalSearchQuery, setGlobalSearchQuery } = useStore();
   
   const [filterDept, setFilterDept] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -305,24 +305,6 @@ export default function EmployeeList({ userRole, onSelectEmployee, onAddEmployee
                   onClick={() => onSelectEmployee(emp.id)}
                 >
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      {emp.photoUrl ? (
-                        <FileImage src={emp.photoUrl} alt={emp.fullName} className="w-10 h-10 rounded-full object-cover border border-slate-200" />
-                      ) : (
-                        <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center font-bold", emp.employmentCategory === 'متعاون' ? "bg-indigo-10 text-indigo-600" : "bg-blue-10 text-blue-600")}>
-                          {emp.fullName ? emp.fullName.charAt(0) : '?'}
-                        </div>
-                      )}
-                      <div>
-                        <div className="font-semibold text-slate-800">{emp.fullName || 'بدون اسم'}</div>
-                        <div className="text-slate-500 text-xs mt-0.5">{emp.jobTitle}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-slate-600 font-mono text-xs" dir="ltr">{emp.employeeId}</td>
-                  <td className="px-6 py-4 text-slate-600">{emp.department}</td>
-                  <td className="px-6 py-4 text-slate-600">{emp.workEmail}</td>
-                  <td className="px-6 py-4">
                     <div className="flex flex-col gap-2">
                       <span className={clsx(
                         "px-2.5 py-1 rounded-md text-[11px] font-bold w-fit border transition-colors",
@@ -350,10 +332,10 @@ export default function EmployeeList({ userRole, onSelectEmployee, onAddEmployee
                               e.stopPropagation();
                               handleOpenBonusModal(emp);
                             }}
-                            className="p-1 rounded-md text-indigo-600 bg-indigo-50 border border-indigo-10 hover:bg-indigo-10 transition-colors"
+                            className="bg-indigo-100 text-indigo-700 p-1.5 rounded hover:bg-indigo-200 transition-colors"
                             title="إضافة مكافأة"
                           >
-                            <Plus size={12} />
+                            <Gift size={14} />
                           </button>
                         </div>
                       )}

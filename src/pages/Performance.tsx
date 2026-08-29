@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Star, Search, MessageSquare, Plus } from 'lucide-react';
+import { Star, Search, MessageSquare, Plus, Printer } from 'lucide-react';
 import { useStore } from '../store';
 import { toast } from '../components/Toast';
 import { PerformanceReview } from '../types';
@@ -17,12 +17,18 @@ export default function Performance({ user }: { user: { role: string, username: 
     <div className="space-y-6 animate-in fade-in duration-300">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-2xl font-bold text-slate-800 tracking-tight">تقييم الأداء</h1>
+        <div className="flex items-center gap-2">
+          <button onClick={() => window.print()} className="no-print px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-2 text-sm font-medium shadow-sm">
+            <Printer size={16} />
+            طباعة
+          </button>
         {['admin', 'developer'].includes(user.role) && (
           <button onClick={() => toast('سيتم إضافة نموذج التقييم قريباً')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium shadow-sm">
             <Plus size={16} />
             تقييم جديد
           </button>
         )}
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">

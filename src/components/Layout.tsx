@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { useStore } from '../store';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
@@ -13,12 +14,13 @@ import Roles from '../pages/Roles';
 import Attendance from '../pages/Attendance';
 import DeveloperSettings from '../pages/DeveloperSettings';
 import Settings from '../pages/Settings';
+import AuditLogs from '../pages/AuditLogs';
 import BackupModal from './BackupModal';
 import { mockEmployees, mockLeaves } from '../data';
 import { Employee, LeaveRequest } from '../types';
 
 export default function Layout({ user, onLogout }: { user: { role: string, username: string }, onLogout: () => void }) {
-  const { employees, leaves, addEmployee, updateEmployee } = useStore();
+  const { employees, leaves, addEmployee, updateEmployee, backupPath, lastBackupDate } = useStore();
   const [currentMenu, setCurrentMenu] = useState(user.role === 'employee' ? 'settings' : 'dashboard');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
@@ -63,12 +65,13 @@ export default function Layout({ user, onLogout }: { user: { role: string, usern
 
     if (currentMenu === 'attendance') return <Attendance user={user} />;
 
+    if (currentMenu === 'audit_logs' && (user.role === 'admin' || user.role === 'developer')) return <AuditLogs />;
     if (currentMenu === 'roles' && (user.role === 'admin' || user.role === 'developer')) return <Roles />;
 
     if (currentMenu === 'dev_settings' && user.role === 'developer') return <DeveloperSettings />;
 
     if (currentMenu === 'settings') {
-      return <Settings />;
+      return <Settings user={user} />;
     }
 
     if (currentMenu === 'employees') {
@@ -156,6 +159,23 @@ export default function Layout({ user, onLogout }: { user: { role: string, usern
           user={user} 
           onNavigate={handleNavigate} 
         />
+        
+        {/* Backup Alert Banner */}
+        {user.role === 'admin' && backupPath && (!lastBackupDate || (new Date().getTime() - new Date(lastBackupDate).getTime()) / (1000 * 3600 * 24) > 7) && (
+          <div className="bg-red-50 border-b border-red-200 p-3 px-8 flex flex-col sm:flex-row items-center justify-between z-10 relative gap-3">
+            <div className="flex items-center gap-3 text-red-700">
+              <AlertTriangle size={20} className="animate-pulse shrink-0" />
+              <p className="text-sm font-medium">تحذير: لم يتم إجراء نسخة احتياطية للبيانات منذ أكثر من 7 أيام. يرجى إنشاء نسخة احتياطية الآن لضمان أمان البيانات.</p>
+            </div>
+            <button 
+              onClick={() => handleNavigate('settings')}
+              className="text-xs bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors font-medium shadow-sm shrink-0 whitespace-nowrap"
+            >
+              الذهاب للإعدادات
+            </button>
+          </div>
+        )}
+  
         <main className="flex-1 p-8 relative z-0">
           {renderContent()}
         </main>

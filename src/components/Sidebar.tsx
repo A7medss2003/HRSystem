@@ -1,3 +1,4 @@
+import { useStore } from '../store';
 import { Users, LayoutDashboard, Settings, UserPlus, LogOut, DollarSign, Star, UserCircle, Calendar, Clock, Shield, Monitor, ChevronRight, ChevronLeft } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -11,6 +12,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ currentMenu, setCurrentMenu, user, onLogout, isCollapsed, toggleCollapse }: SidebarProps) {
+  const { systemSettings } = useStore();
   const allItems = [
     { id: 'dashboard', label: 'لوحة التحكم', icon: LayoutDashboard, roles: ['admin', 'accountant', 'developer'] },
     { id: 'employees', label: 'الموظفون', icon: Users, roles: ['admin', 'accountant', 'developer'] },
@@ -31,17 +33,17 @@ export default function Sidebar({ currentMenu, setCurrentMenu, user, onLogout, i
       {/* Toggle Button */}
       <button 
         onClick={toggleCollapse}
-        className="absolute -left-3 top-6 bg-blue-600 text-white rounded-full p-1 z-30 shadow-lg hover:bg-blue-500 transition-colors"
+        className="absolute -left-3.5 top-5 bg-slate-800 text-slate-300 border border-slate-700 rounded-full p-1.5 z-30 shadow-md hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all cursor-pointer"
       >
         {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
       </button>
 
       <div className={clsx("h-16 flex items-center border-b border-slate-800 bg-slate-950 transition-all duration-300 overflow-hidden", isCollapsed ? "px-2 justify-center" : "px-4")}>
         <div className={clsx("bg-white/10 rounded-lg flex items-center justify-center overflow-hidden p-1 shrink-0 transition-all duration-300", isCollapsed ? "w-10 h-10 ml-0" : "w-10 h-10 ml-3")}>
-          <img src={customLogo || `${import.meta.env.BASE_URL}logo.png`} alt="Logo" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }} />
+          <img src={customLogo || `${import.meta.env.BASE_URL}logo.png`} alt="Logo" className="w-full h-full object-contain drop-shadow-md scale-95" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }} />
           <Users size={20} className="text-white hidden" />
         </div>
-        {!isCollapsed && <h1 className="text-white font-bold tracking-wider text-xl leading-tight whitespace-nowrap overflow-hidden">مركز البنيان</h1>}
+        {!isCollapsed && <h1 className="text-white font-bold text-sm md:text-base leading-snug line-clamp-2">{systemSettings?.companyName || 'مركز البنيان للتقنية و الصناعات الهندسية'}</h1>}
       </div>
       
       <div className="flex-1 py-6 overflow-y-auto overflow-x-hidden">

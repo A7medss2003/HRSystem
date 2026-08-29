@@ -5,3 +5,45 @@
   --font-sans: "IBM Plex Sans Arabic", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
+
+@media print {
+  body {
+    background-color: white !important;
+  }
+  
+  /* Hide sidebar and topbar */
+  nav, header, aside, .sidebar {
+    display: none !important;
+  }
+  
+  /* Adjust main container to take full width */
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* Make tabs contents visible regardless of which tab is active (optional, but let's just let them print current tab for now to keep it simple, or print everything. Let's keep it simple: they print what they see) */
+
+  /* Ensure colors and borders are printed */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  /* Avoid page breaks inside cards */
+  .bg-white {
+    page-break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid #e2e8f0 !important;
+  }
+}

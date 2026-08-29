@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { ArrowRight, Save, X, Building, Mail, Phone, MapPin, Briefcase, GraduationCap, Award, FileText, Monitor, Clock, User as UserIcon, Contact, Trash2, Star, Gift, Download } from 'lucide-react';
+import { ArrowRight, Save, X, Building, Mail, Phone, MapPin, Briefcase, GraduationCap, Award, FileText, Monitor, Clock, User as UserIcon, Contact, Trash2, Star, Gift, Download, Printer } from 'lucide-react';
 import clsx from 'clsx';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { Employee, Education, Experience, Skill, Contract, Certification, Equipment, Document, AuditLog } from '../types';
 import { toast } from '../components/Toast';
+import { validatePassword } from '../lib/validators';
+import { useStore } from '../store';
 import { employeeSchema } from '../schema';
 import { z } from 'zod';
 
@@ -61,6 +63,7 @@ const defaultEmployee: Employee = {
   emergencyContactPhone: '',
   status: 'نشط',
   linkedUser: '',
+  password: '1234',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   createdBy: 'admin',
@@ -140,8 +143,12 @@ import FileImage from '../components/FileImage';
 
 export default function EmployeeDetail({ employee, onBack, onSave, readOnly = false, hideBack = false, initialCategory }: EmployeeDetailProps & { readOnly?: boolean, hideBack?: boolean, initialCategory?: 'موظف أساسي' | 'متعاقد' | 'متعاون' }) {
   const [activeTab, setActiveTab] = useState('basic');
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [formData, setFormData] = useState<Employee>(employee || { ...defaultEmployee, employmentCategory: initialCategory || 'موظف أساسي' });
   const [initialBonus, setInitialBonus] = useState<string>('');
+  const { deleteEmployee, addSystemLog } = useStore();
+  // Assume userRole comes from parent via Layout or we can just show it if not readOnly
+
 
   const handleChange = (field: keyof Employee, value: any) => {
     if (readOnly) return;
@@ -150,6 +157,9 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
 
   const handleSave = () => {
     try {
+
+    
+  
       // Validate form data
       employeeSchema.parse(formData);
     } catch (error) {
@@ -440,6 +450,54 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
     }));
   };
 
+
+  const printHandoverReceipt = (equipmentName: string, equipmentDetails: string) => {
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html dir="rtl">
+        <head>
+          <title>إيصال استلام عهدة</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; color: #333; }
+            h1 { text-align: center; color: #1e40af; margin-bottom: 5px; }
+            h3 { text-align: center; color: #64748b; margin-top: 0; font-weight: normal; }
+            .content { font-size: 18px; line-height: 1.8; margin-top: 50px; text-align: right; }
+            .box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; margin: 20px 0; }
+            .signatures { display: flex; justify-content: space-between; margin-top: 100px; text-align: center; font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <h1>إيصال استلام عهدة</h1>
+          <h3>الشركة الليبية للتقنية</h3>
+          <hr style="margin: 20px 0; border: 0; border-top: 2px solid #e2e8f0;" />
+          
+          <div class="content">
+            <p>أقر أنا الموظف <strong>${formData.fullName}</strong>، الحامل للرقم الوظيفي <strong>${formData.employeeId}</strong>، بأني قد استلمت العهدة التالية بحالة جيدة للقيام بمهام عملي:</p>
+            
+            <div class="box">
+              <strong>نوع العهدة:</strong> ${equipmentName}<br><br>
+              <strong>التفاصيل:</strong> ${equipmentDetails || 'لا يوجد'}
+            </div>
+            
+            <p>وأتعهد بالمحافظة عليها واستخدامها في أغراض العمل فقط، وإعادتها للشركة عند الطلب أو عند انتهاء فترة خدمتي.</p>
+          </div>
+          
+          <div class="signatures">
+            <div>توقيع الموظف المستلم<br><br>...........................</div>
+            <div>التاريخ<br><br>${new Date().toLocaleDateString('ar-SA')}</div>
+            <div>اعتماد الإدارة<br><br>...........................</div>
+          </div>
+          
+          <script>
+            window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 500); }
+          </script>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
+  };
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 animate-in fade-in duration-300">
       {/* Header */}
@@ -500,8 +558,23 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
           </div>
         </div>
         
+        
         {!readOnly && (
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-3 shrink-0 flex-wrap">
+            {employee && employee.id && (
+              <button 
+                onClick={() => setShowConfirmDelete(true)} 
+                className="px-4 py-2.5 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors flex items-center gap-2 text-sm font-medium"
+              >
+                <Trash2 size={18} />
+                حذف الموظف
+              </button>
+            )}
+            
+            <button onClick={() => window.print()} className="px-5 py-2.5 bg-slate-100 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-2 text-sm font-medium print:hidden">
+              <Printer size={18} />
+              طباعة الملف
+            </button>
             <button onClick={onBack} className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm font-medium">
               <X size={18} />
               إلغاء
@@ -512,6 +585,7 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
             </button>
           </div>
         )}
+
       </div>
 
       {/* Main Content Grid */}
@@ -608,6 +682,11 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
                 <InputField readOnly={readOnly} label="الأدوار الإضافية (مفصولة بفاصلة)" value={formData.additionalRoles?.join('، ')} onChange={(v: string) => handleChange('additionalRoles', v.split('،').map(t=>t.trim()))} className="md:col-span-2" />
               </Section>
 
+              <Section title="بيانات الدخول للنظام (للمدير والمطور)">
+                <InputField readOnly={readOnly} label="اسم المستخدم (للدخول)" value={formData.linkedUser} onChange={(v: any) => handleChange('linkedUser', v)} />
+                <InputField readOnly={readOnly} label="كلمة المرور" value={formData.password || ''} onChange={(v: any) => handleChange('password', v)} type="text" />
+              </Section>
+  
               <Section title="الموافقات">
                 <InputField readOnly={readOnly} label="مسؤول اعتماد الإجازات" value={formData.timeOffApprover} onChange={(v: any) => handleChange('timeOffApprover', v)} />
                 <InputField readOnly={readOnly} label="مسؤول اعتماد المصروفات" value={formData.expensesApprover} onChange={(v: any) => handleChange('expensesApprover', v)} />
@@ -817,7 +896,8 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {formData.equipments.map(eq => (
                   <div key={eq.id} className="p-5 border border-slate-200 rounded-xl bg-slate-50 relative group transition-all hover:border-blue-300">
-                    {!readOnly && <button onClick={() => handleDeleteEquipment(eq.id)} className="absolute top-2 left-2 p-1.5 text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button>}
+                    <button type="button" onClick={() => printHandoverReceipt(eq.name, eq.details)} className="absolute top-2 left-10 p-1.5 text-slate-500 hover:bg-slate-200 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity" title="طباعة إيصال الاستلام"><Printer size={16}/></button>
+                    {!readOnly && <button type="button" onClick={() => handleDeleteEquipment(eq.id)} className="absolute top-2 left-2 p-1.5 text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button>}
                     <div className="grid grid-cols-2 gap-3 mt-2">
                       <InputField readOnly={readOnly} label="الاسم" value={eq.name} onChange={(v: any) => handleUpdateEquipment(eq.id, 'name', v)} className="col-span-2" />
                       <InputField readOnly={readOnly} label="النوع" value={eq.type} onChange={(v: any) => handleUpdateEquipment(eq.id, 'type', v)} />
@@ -961,6 +1041,43 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
              </div>
            </div>
           )}
+
+      {showConfirmDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-4 mx-auto">
+                <Trash2 size={24} className="text-red-500" />
+              </div>
+              <h3 className="text-lg font-bold text-center text-slate-800 mb-2">تأكيد الحذف</h3>
+              <p className="text-slate-600 text-center mb-6">
+                هل أنت متأكد من حذف الموظف نهائياً؟ لا يمكن التراجع عن هذا الإجراء.
+              </p>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowConfirmDelete(false)} 
+                  className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium transition-colors"
+                >
+                  إلغاء
+                </button>
+                <button 
+                  onClick={() => {
+                    if (employee) {
+                      deleteEmployee(employee.id);
+                      addSystemLog({ userId: 'system', userName: 'Administrator', action: 'حذف موظف', details: 'تم حذف الموظف ' + employee.fullName });
+                      toast('تم حذف الموظف بنجاح');
+                      onBack();
+                    }
+                  }} 
+                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium transition-colors"
+                >
+                  نعم، احذف الموظف
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
         </div>
       </div>

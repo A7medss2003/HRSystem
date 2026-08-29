@@ -93,7 +93,7 @@ export default function DeveloperSettings() {
     }
   };
 
-  const handleFactoryReset = async () => {
+    const handleFactoryReset = async () => {
     if (window.confirm('تحذير: سيتم مسح كافة البيانات والإعدادات والمرفقات وإعادة المنظومة للوضع الافتراضي. هل تريد المتابعة؟')) {
       try {
         const fileStore = localforage.createInstance({
@@ -101,11 +101,12 @@ export default function DeveloperSettings() {
           storeName: 'files'
         });
         await fileStore.clear();
-        localStorage.clear();
-        window.location.reload();
       } catch (err) {
-        alert('حدث خطأ أثناء إعادة ضبط المنظومة.');
+        console.warn('Error clearing files:', err);
       }
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.replace('/');
     }
   };
 

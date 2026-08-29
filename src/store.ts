@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Employee, LeaveRequest, RoleDef, AttendanceRecord, Candidate, PayrollRecord, PerformanceReview } from './types';
+import { Employee, LeaveRequest, RoleDef, AttendanceRecord, Candidate, PayrollRecord, PerformanceReview, SystemAuditLog, SystemSettings } from './types';
 import { mockEmployees, mockLeaves } from './data';
 
 interface AppState {
@@ -11,7 +11,13 @@ interface AppState {
   candidates: Candidate[];
   payrolls: PayrollRecord[];
   performanceReviews: PerformanceReview[];
+  systemAuditLogs: SystemAuditLog[];
+  systemSettings: SystemSettings;
+  updateSystemSettings: (settings: SystemSettings) => void;
   globalSearchQuery: string;
+  recoveryCodes: string[];
+  setRecoveryCodes: (codes: string[]) => void;
+  useRecoveryCode: (code: string) => boolean;
   setGlobalSearchQuery: (query: string) => void;
   
   addEmployee: (employee: Employee) => void;
@@ -29,13 +35,18 @@ interface AppState {
   setPayrolls: (payrolls: PayrollRecord[]) => void;
   addPerformanceReview: (review: PerformanceReview) => void;
   backupPath: string | null;
+  lastBackupDate: string | null;
+  setLastBackupDate: (date: string) => void;
   setBackupPath: (path: string | null) => void;
+  addSystemLog: (log: any) => void;
 }
 
 export const useStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       backupPath: null,
+      lastBackupDate: null,
+      setLastBackupDate: (date) => set({ lastBackupDate: date }),
       setBackupPath: (path) => set({ backupPath: path }),
       employees: mockEmployees,
       leaves: mockLeaves,
@@ -45,25 +56,42 @@ export const useStore = create<AppState>()(
         { id: 'employee', name: 'الموظف', permissions: ['view_profile', 'request_leave'] }
       ],
       attendanceRecords: [],
-      candidates: [
-        { id: 'cand-1', name: 'أحمد علي', position: 'مهندس برمجيات', stage: 'new', dateAdded: new Date().toISOString().split('T')[0] },
-        { id: 'cand-2', name: 'سالم محمد', position: 'مصمم واجهات', stage: 'screening', dateAdded: new Date().toISOString().split('T')[0] }
-      ],
+      candidates: [],
       payrolls: [],
       performanceReviews: [],
+      systemAuditLogs: [],
+      systemSettings: { companyName: 'مركز البنيان للتقنية و الصناعات الهندسية', primaryLanguage: 'ar', fiscalYearStart: '01-01' },
+      updateSystemSettings: (settings) => set({ systemSettings: settings }),
       globalSearchQuery: '',
+      recoveryCodes: [],
       setGlobalSearchQuery: (query) => set({ globalSearchQuery: query }),
+      setRecoveryCodes: (codes) => set({ recoveryCodes: codes }),
+      useRecoveryCode: (code) => {
+        const state = get();
+        if (state.recoveryCodes.includes(code)) {
+          set({ recoveryCodes: state.recoveryCodes.filter(c => c !== code) });
+          return true;
+        }
+        return false;
+      },
       
+
+      addSystemLog: (log) => set((state) => ({
+        systemAuditLogs: [
+          {
+            ...log,
+            id: 'log-' + Date.now() + Math.random().toString(36).substring(2, 5),
+            timestamp: new Date().toISOString()
+          },
+          ...state.systemAuditLogs
+        ]
+      })),
       addEmployee: (emp) => set((state) => ({ employees: [emp, ...state.employees] })),
       updateEmployee: (emp) => set((state) => ({
         employees: state.employees.map((e) => (e.id === emp.id ? emp : e)),
       })),
       deleteEmployee: (id) => set((state) => ({
-        employees: state.employees.filter((e) => e.id !== id),
-        leaves: state.leaves.filter((l) => l.employeeId !== id),
-        attendanceRecords: state.attendanceRecords.filter((a) => a.employeeId !== id),
-        payrolls: state.payrolls.filter((p) => p.employeeId !== id),
-        performanceReviews: state.performanceReviews.filter((pr) => pr.employeeId !== id)
+        employees: state.employees.filter((e) => e.id !== id)
       })),
       
       addLeave: (leave) => set((state) => ({ leaves: [leave, ...state.leaves] })),
@@ -84,7 +112,7 @@ export const useStore = create<AppState>()(
       addPerformanceReview: (review) => set((state) => ({ performanceReviews: [review, ...state.performanceReviews] }))
     }),
     {
-      name: 'hr-system-storage',
+      name: 'hr-system-storage-v4',
     }
   )
 );

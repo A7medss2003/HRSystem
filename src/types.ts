@@ -183,6 +183,7 @@ export interface Employee {
   status: EmployeeStatus;
   performanceRating?: PerformanceRating;
   linkedUser: string;
+  password?: string;
   createdAt: string;
   updatedAt: string;
   createdBy: string;
@@ -239,4 +240,20 @@ export interface PerformanceReview {
   reviewer: string;
   rating: number;
   comments: string;
+}
+
+export interface SystemAuditLog {
+  id: string;
+  userId: string;
+  userName: string;
+  action: string;
+  details: string;
+  timestamp: string;
+}
+
+export interface SystemSettings {
+  companyName: string;
+  logoUrl?: string;
+  primaryLanguage: 'ar' | 'en';
+  fiscalYearStart: string;
 }
