@@ -1,11 +1,26 @@
 import React, { useState } from 'react';
-import { Monitor, Save, Download, Image as ImageIcon, Upload, Trash2, Database, AlertTriangle, RefreshCcw } from 'lucide-react';
+import { Monitor, Save, Download, Image as ImageIcon, Upload, Trash2, Database, AlertTriangle, RefreshCcw, GitBranch } from 'lucide-react';
 import { useStore } from '../store';
 import localforage from 'localforage';
+import { toast } from '../components/Toast';
+import GitHubUpdateModal from '../components/GitHubUpdateModal';
+import GitHubUpdate from '../components/GitHubUpdate';
 
 export default function DeveloperSettings() {
+  const [primaryColor, setPrimaryColor] = useState(() => localStorage.getItem('app_primary_color') || '#243f63');
+  
+  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const color = e.target.value;
+    setPrimaryColor(color);
+    localStorage.setItem('app_primary_color', color);
+    document.documentElement.style.setProperty('--color-primary', color);
+    document.documentElement.style.setProperty('--color-primary-light', color + '20'); 
+    document.documentElement.style.setProperty('--color-primary-hover', color + 'E6'); 
+  };
+
   const [logo, setLogo] = useState<string | null>(localStorage.getItem('app_logo'));
   const [bg, setBg] = useState<string | null>(localStorage.getItem('app_bg'));
+  const [showGitHubModal, setShowGitHubModal] = useState(false);
   const { employees, leaves } = useStore();
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -68,10 +83,12 @@ export default function DeveloperSettings() {
           Object.keys(data).forEach(key => {
             localStorage.setItem(key, data[key]);
           });
-          alert('تم استعادة البيانات بنجاح، سيتم إعادة تحميل الصفحة.');
-          window.location.reload();
+          toast('تم استعادة البيانات بنجاح، سيتم إعادة تحميل الصفحة...', 'success');
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
         } catch (err) {
-          alert('خطأ في قراءة ملف النسخة الاحتياطية.');
+          toast('خطأ في قراءة ملف النسخة الاحتياطية', 'error');
         }
       };
       reader.readAsText(file);
@@ -86,9 +103,9 @@ export default function DeveloperSettings() {
           storeName: 'files'
         });
         await fileStore.clear();
-        alert('تم مسح جميع المرفقات بنجاح.');
+        toast('تم مسح جميع المرفقات بنجاح', 'success');
       } catch (err) {
-        alert('حدث خطأ أثناء مسح المرفقات.');
+        toast('حدث خطأ أثناء مسح المرفقات', 'error');
       }
     }
   };
@@ -149,7 +166,7 @@ export default function DeveloperSettings() {
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2 mb-4">
             <ImageIcon size={20} className="text-blue-500" />
-            تخصيص المظهر والشعار
+            تخصيص المظهر والشعار والألوان
           </h3>
           
           <div className="space-y-6">
@@ -184,9 +201,25 @@ export default function DeveloperSettings() {
                 )}
               </div>
             </div>
+
+            <div className="border-t border-slate-100 pt-6 mt-6">
+              <p className="text-sm text-slate-600 mb-2">لون المنظومة الأساسي</p>
+              <div className="flex items-center gap-4">
+                <input 
+                  type="color" 
+                  value={primaryColor} 
+                  onChange={handleColorChange}
+                  className="w-12 h-12 p-1 rounded-lg cursor-pointer border border-slate-200"
+                  title="اختر اللون الأساسي للمنظومة"
+                />
+                <div className="flex-1 text-sm text-slate-500">
+                  قم باختيار اللون الذي يتماشى مع هوية شركتك، سيتم تطبيقه على الأزرار والقوائم في التحديث القادم أو فوراً لبعض العناصر.
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
-
         {/* Data Management */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col">
           <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2 mb-4">
@@ -218,15 +251,25 @@ export default function DeveloperSettings() {
             <div className="pt-4 mt-4 border-t border-slate-100">
               <button 
                 onClick={handleFactoryReset}
-                className="w-full bg-red-50 hover:bg-red-100 text-red-600 py-3 rounded-xl flex items-center justify-center gap-2 font-medium transition-colors border border-red-200"
+                className="w-full bg-red-50 hover:bg-red-100 text-red-600 py-3 rounded-xl flex items-center justify-center gap-2 font-medium transition-colors border border-red-200 cursor-pointer"
               >
                 <AlertTriangle size={20} />
                 إعادة ضبط المصنع بالكامل (مسح نهائي)
               </button>
             </div>
           </div>
+
+          {/* GitHub System Updates Component */}
+          <div className="md:col-span-2">
+            <GitHubUpdate />
+          </div>
         </div>
       </div>
+
+      <GitHubUpdateModal
+        isOpen={showGitHubModal}
+        onClose={() => setShowGitHubModal(false)}
+      />
     </div>
   );
 }

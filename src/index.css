@@ -6,17 +6,32 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
+:root {
+  --color-primary: #243f63;
+  --color-primary-hover: #1a2f4c;
+  --color-primary-light: #eff6ff;
+}
+
+
+
 @media print {
-  body {
+  body, html {
     background-color: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
   
-  /* Hide sidebar and topbar */
-  nav, header, aside, .sidebar {
+  /* Hide sidebar, topbar, titlebar, toasts, and print-hidden elements */
+  nav, header, aside, .sidebar, [role="tooltip"], .toast-container, .print\:hidden, [class*="print:hidden"] {
     display: none !important;
   }
   
-  /* Adjust main container to take full width */
+  /* Reset application layout margins and padding when printing */
+  .mr-72, .mr-24 {
+    margin-right: 0 !important;
+  }
+
   main {
     margin: 0 !important;
     padding: 0 !important;
@@ -32,7 +47,15 @@
     display: block !important;
   }
 
-  /* Make tabs contents visible regardless of which tab is active (optional, but let's just let them print current tab for now to keep it simple, or print everything. Let's keep it simple: they print what they see) */
+  /* When the print document is rendered, prioritize it cleanly */
+  #attendance-print-document {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
 
   /* Ensure colors and borders are printed */
   * {
@@ -40,10 +63,13 @@
     print-color-adjust: exact !important;
   }
   
-  /* Avoid page breaks inside cards */
-  .bg-white {
+  /* Avoid page breaks inside table rows */
+  tr, .bg-white {
     page-break-inside: avoid;
-    box-shadow: none !important;
-    border: 1px solid #e2e8f0 !important;
+    break-inside: avoid;
   }
+}
+
+body {
+  background-color: #f4f7f9;
 }

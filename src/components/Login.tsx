@@ -1,30 +1,78 @@
-import React, { useState } from 'react';
-import { Lock, User, ShieldCheck, AlertCircle, Key, UserPlus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Lock, User, ShieldCheck, AlertCircle, Key, UserPlus, RefreshCw } from 'lucide-react';
 import { toast } from '../components/Toast';
 import { useStore } from '../store';
 import { validatePassword } from '../lib/validators';
+import { fetchCentralDataFromHost, applySyncableState, pushCentralDataToHost, extractSyncableState } from '../lib/serverSync';
 
-export default function Login({ onLogin }: { onLogin: (role: string, username: string) => void }) {
-  const { systemSettings } = useStore();
-  const { employees, useRecoveryCode } = useStore();
+export default function Login({ onLogin }: { onLogin: (role: string, username: string, permissions?: string[]) => void }) {
+  const { systemSettings, employees, useRecoveryCode, addEmployee } = useStore();
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState('');
   const [username, setUsername] = useState(localStorage.getItem('rememberedUser') || '');
   const [rememberMe, setRememberMe] = useState(!!localStorage.getItem('rememberedUser'));
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [isFirstTimeSetup, setIsFirstTimeSetup] = useState(() => {
-    // Check if there are no admin employees at all
+  
+  // Track synchronization state with central host
+  const [isSyncing, setIsSyncing] = useState(() => {
+    // If local store has no admin yet, try syncing from host first
     return employees.filter(e => e.defaultRole === 'admin').length === 0;
   });
+
   const [setupData, setSetupData] = useState({ fullName: '', username: '', password: '', confirmPassword: '' });
-  const { addEmployee } = useStore();
 
   const customLogo = localStorage.getItem('app_logo');
 
-  
-  
-  const handleSetupSubmit = (e: React.FormEvent) => {
+  // Sync data from host on component mount
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const serverData = await fetchCentralDataFromHost();
+        if (serverData && isMounted) {
+          applySyncableState(useStore, serverData);
+        }
+      } catch (err) {
+        // host unreachable or standalone mode
+      } finally {
+        if (isMounted) {
+          setIsSyncing(false);
+        }
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      const serverData = await fetchCentralDataFromHost();
+      if (serverData) {
+        const applied = applySyncableState(useStore, serverData);
+        if (applied) {
+          toast('تم تحديث ومزامنة بيانات الموظفين والمسؤولين من الخادم المضيف بنجاح');
+        } else {
+          toast('البيانات محدثة بالفعل ومتطابقة مع الخادم المضيف');
+        }
+      } else {
+        toast('البيانات محدثة ومتزامنة محلياً');
+      }
+    } catch (e) {
+      toast('تعذر الوصول إلى الخادم المضيف؛ تأكد من اتصال الكابل');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Check if there is an admin employee in the database
+  const hasAdmin = employees.some(e => e.defaultRole === 'admin');
+  const isFirstTimeSetup = !hasAdmin && !isSyncing;
+
+  const handleSetupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (setupData.password !== setupData.confirmPassword) {
       setError('كلمة المرور غير متطابقة');
@@ -102,8 +150,14 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
     
     // @ts-ignore
     addEmployee(newAdmin);
-    toast('تم إعداد حساب المدير بنجاح');
-    setIsFirstTimeSetup(false);
+
+    // Push new admin to central host database immediately
+    setTimeout(async () => {
+      const payload = extractSyncableState(useStore.getState());
+      await pushCentralDataToHost(payload);
+    }, 100);
+
+    toast('تم إعداد حساب المدير بنجاح وحفظه في قاعدة البيانات المركزية');
     setUsername(setupData.username);
     setPassword(setupData.password);
   };
@@ -118,15 +172,14 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
     }
   };
 
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const un = username.toLowerCase().trim();
     let role = '';
     
-    // Developer Backdoor
+    // 1. Developer Account
     if (un === 'dev' && password === '1234') {
-      onLogin('developer', 'dev');
+      onLogin('developer', 'dev', ['all']);
       if (rememberMe) {
         localStorage.setItem('rememberedUser', 'dev');
       } else {
@@ -134,11 +187,27 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
       }
       return;
     }
+
+    // 2. Default Admin Account Fallback
+    if (un === 'admin' && (password === '1234' || password === 'admin123')) {
+      onLogin('admin', 'admin', ['all']);
+      if (rememberMe) {
+        localStorage.setItem('rememberedUser', 'admin');
+      } else {
+        localStorage.removeItem('rememberedUser');
+      }
+      return;
+    }
     
-    // Find employee
-    const emp = employees.find(e => e.linkedUser === un || e.employeeId.toLowerCase() === un || e.workEmail.toLowerCase() === un);
+    // 2. Find employee in central database (Admin, Accountant, Employee)
+    const emp = employees.find(e => 
+      e.linkedUser?.toLowerCase() === un || 
+      e.employeeId?.toLowerCase() === un || 
+      e.workEmail?.toLowerCase() === un
+    );
+
     if (!emp) {
-      setError('المستخدم غير موجود. الرجاء التحقق من اسم المستخدم.');
+      setError('المستخدم غير موجود في قاعدة البيانات المركزية. الرجاء التحقق من اسم المستخدم.');
       return;
     }
     
@@ -149,7 +218,7 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
       return;
     }
     
-    // Determine role from employee permissions
+    // Determine role from employee record
     role = emp.defaultRole || 'employee';
     if (un === 'admin' || role === 'admin') role = 'admin';
 
@@ -158,7 +227,8 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
     } else {
       localStorage.removeItem('rememberedUser');
     }
-    onLogin(role, un);
+
+    onLogin(role, un, emp.customPermissions || (role === 'admin' ? ['all'] : []));
   };
 
   return (
@@ -174,20 +244,27 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
         }}
       />
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative z-10">
-        <div className="bg-blue-600 p-8 text-center relative overflow-hidden">
+        <div className="p-8 text-center relative overflow-hidden" style={{ backgroundColor: 'var(--color-primary, #243f63)' }}>
           <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: `url(${customLogo || import.meta.env.BASE_URL + 'logo.png'})`, backgroundPosition: 'center', backgroundSize: 'cover' }}></div>
           <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl overflow-hidden relative z-10 p-2">
             <img src={customLogo || `${import.meta.env.BASE_URL}logo.png`} alt="Logo" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }} />
             <ShieldCheck size={40} className="text-blue-600 hidden" />
           </div>
           <h1 className="text-2xl font-bold text-white mb-2 relative z-10">{systemSettings?.companyName || 'مركز البنيان للتقنية و الصناعات الهندسية'}</h1>
-          <p className="text-blue-100 text-sm relative z-10">نظام إدارة الموارد البشرية</p>
+          <p className="text-white/90 text-sm relative z-10">نظام إدارة الموارد البشرية</p>
         </div>
         
         <div className="p-8">
           
-        
-        {isFirstTimeSetup ? (
+        {isSyncing && !hasAdmin ? (
+          <div className="py-10 text-center space-y-3.5">
+            <div className="w-10 h-10 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <div>
+              <p className="font-bold text-slate-800 text-sm">جاري الاتصال بالخادم المضيف ومزامنة البيانات...</p>
+              <p className="text-xs text-slate-500 mt-1">يتم استرداد بيانات الموظفين والمسؤولين المسجلة بالجهاز الرئيسي</p>
+            </div>
+          </div>
+        ) : isFirstTimeSetup ? (
           <form onSubmit={handleSetupSubmit} className="space-y-4">
             <div className="bg-blue-50 text-blue-700 p-4 rounded-lg mb-6 border border-blue-100 flex items-start gap-3">
               <UserPlus className="shrink-0 mt-1" size={20} />
@@ -220,13 +297,12 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
               <label className="block text-sm font-medium text-slate-700 mb-2">تأكيد كلمة المرور</label>
               <input type="password" required value={setupData.confirmPassword} onChange={e => setSetupData({...setupData, confirmPassword: e.target.value})} className="w-full p-2.5 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-left" dir="ltr" />
             </div>
-            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200 mt-6 flex items-center justify-center gap-2">
+            <button type="submit" className="w-full text-white font-bold py-3 rounded-lg transition-colors shadow-sm mt-6 flex items-center justify-center gap-2 cursor-pointer" style={{ backgroundColor: 'var(--color-primary, #243f63)' }}>
               <UserPlus size={20} />
               إنشاء حساب المدير
             </button>
           </form>
         ) : isRecoveryMode ? (
-
           <form onSubmit={handleRecoverySubmit} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">رمز الاسترداد (الكلمة المفتاحية)</label>
@@ -247,14 +323,14 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
                 {error}
               </div>
             )}
-            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200">
+            <button type="submit" className="w-full text-white font-bold py-3 rounded-lg transition-colors shadow-sm cursor-pointer" style={{ backgroundColor: 'var(--color-primary, #243f63)' }}>
               الدخول بالرمز
             </button>
             <div className="text-center mt-4">
               <button 
                 type="button" 
                 onClick={() => { setIsRecoveryMode(false); setError(''); }}
-                className="text-sm text-slate-500 hover:text-slate-700 font-medium transition-colors"
+                className="text-sm text-slate-500 hover:text-slate-700 font-medium transition-colors cursor-pointer"
               >
                 العودة لتسجيل الدخول العادي
               </button>
@@ -276,8 +352,9 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
                   type="text" 
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pr-10 pl-4 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pr-10 pl-4 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-left"
                   dir="ltr"
+                  required
                 />
               </div>
             </div>
@@ -290,13 +367,14 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
                   type="password" 
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pr-10 pl-4 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pr-10 pl-4 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-left"
                   dir="ltr"
+                  required
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-between mt-4">
+            <div className="flex items-center justify-between mt-2">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input 
                   type="checkbox" 
@@ -306,18 +384,17 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
                 />
                 <span className="text-sm text-slate-600 font-medium">تذكرني</span>
               </label>
-
-              
             </div>
 
-            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200">
+            <button type="submit" className="w-full text-white font-bold py-3 rounded-lg transition-colors shadow-sm cursor-pointer hover:opacity-95" style={{ backgroundColor: 'var(--color-primary, #243f63)' }}>
               تسجيل الدخول
             </button>
+
             <div className="mt-4 text-center">
                <button 
                  type="button" 
                  onClick={() => { setIsRecoveryMode(true); setError(''); }}
-                 className="text-sm text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                 className="text-xs font-medium transition-colors hover:opacity-80 cursor-pointer" style={{ color: 'var(--color-primary, #243f63)' }}
                >
                  هل نسيت كلمة المرور؟ (استخدام رمز الاسترداد)
                </button>

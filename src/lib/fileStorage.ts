@@ -24,12 +24,23 @@ export const saveFileToLocal = async (file: File): Promise<string> => {
   });
 };
 
+export const saveDataUrlToLocal = async (dataUrl: string): Promise<string> => {
+  const fileId = 'file_' + Date.now() + '_' + Math.random().toString(36).substring(7);
+  try {
+    await fileStore.setItem(fileId, dataUrl);
+    return fileId;
+  } catch (err) {
+    console.warn('Warning saving data URL:', err);
+    throw err;
+  }
+};
+
 export const getFileFromLocal = async (fileId: string): Promise<string | null> => {
   try {
     const data = await fileStore.getItem<string>(fileId);
     return data;
   } catch (err) {
-    console.error('Error fetching file:', err);
+    console.warn('Warning fetching file:', err);
     return null;
   }
 };
@@ -38,6 +49,6 @@ export const deleteFileFromLocal = async (fileId: string): Promise<void> => {
   try {
     await fileStore.removeItem(fileId);
   } catch (err) {
-    console.error('Error deleting file:', err);
+    console.warn('Warning deleting file:', err);
   }
 };

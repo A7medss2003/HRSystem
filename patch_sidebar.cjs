@@ -1,37 +1,15 @@
 const fs = require('fs');
+let file = fs.readFileSync('src/components/Sidebar.tsx', 'utf8');
 
-let sidebar = fs.readFileSync('src/components/Sidebar.tsx', 'utf8');
-if (!sidebar.includes('audit_logs')) {
-  // Add icon
-  sidebar = sidebar.replace(
-    "Activity, ShieldAlert } from 'lucide-react';",
-    "Activity, ShieldAlert, FileSearch } from 'lucide-react';"
-  );
-  
-  // Add menu item under Admin section
-  const auditLogItem = `
-  { id: 'audit_logs', label: 'سجل العمليات', icon: FileSearch, permission: 'manage_employees' },
+const isElectronCheck = `
+  const customLogo = localStorage.getItem('app_logo');
+  const isElectron = typeof window !== 'undefined' && (window as any).require;
 `;
-  sidebar = sidebar.replace(
-    /\{ id: 'roles', label: 'الصلاحيات والأدوار', icon: Shield, permission: 'manage_employees' \},/,
-    "{ id: 'roles', label: 'الصلاحيات والأدوار', icon: Shield, permission: 'manage_employees' },\n" + auditLogItem
-  );
-  
-  fs.writeFileSync('src/components/Sidebar.tsx', sidebar);
-}
+file = file.replace(/  const customLogo = localStorage\.getItem\('app_logo'\);/, isElectronCheck);
 
-let layout = fs.readFileSync('src/components/Layout.tsx', 'utf8');
-if (!layout.includes('AuditLogs')) {
-  layout = layout.replace(
-    "import Settings from '../pages/Settings';",
-    "import Settings from '../pages/Settings';\nimport AuditLogs from '../pages/AuditLogs';"
-  );
-  
-  layout = layout.replace(
-    "if (currentMenu === 'roles'",
-    "if (currentMenu === 'audit_logs' && (user.role === 'admin' || user.role === 'developer')) return <AuditLogs />;\n    if (currentMenu === 'roles'"
-  );
-  
-  fs.writeFileSync('src/components/Layout.tsx', layout);
-}
+file = file.replace(
+  /className=\{clsx\("bg-slate-900 text-slate-300 flex flex-col h-screen fixed right-0 top-0 transition-all duration-300 border-l border-slate-800 rtl z-20 group", isCollapsed \? "w-20" : "w-64"\)\}/,
+  'className={clsx("bg-slate-900 text-slate-300 flex flex-col fixed right-0 transition-all duration-300 border-l border-slate-800 rtl z-20 group", isCollapsed ? "w-20" : "w-64", isElectron ? "top-8 h-[calc(100vh-2rem)]" : "top-0 h-screen")}'
+);
 
+fs.writeFileSync('src/components/Sidebar.tsx', file);

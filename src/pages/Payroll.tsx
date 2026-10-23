@@ -2,11 +2,14 @@ import React, { useState } from 'react';
 import { Search, Printer, Download, DollarSign, Calendar, Plus } from 'lucide-react';
 import { useStore } from '../store';
 import { toast } from '../components/Toast';
+import { isManagerEmployee, isRegularUser } from '../lib/managerGuard';
 
-export default function Payroll({ user }: { user: { role: string, username: string } }) {
+export default function Payroll({ user }: { user: { role: string, username: string, permissions?: string[] } }) {
   
   const { payrolls, setPayrolls, employees } = useStore();
   const [search, setSearch] = useState('');
+
+  const isRegular = isRegularUser(user);
 
   const handleGeneratePayroll = () => {
     const newPayrolls = employees
@@ -43,11 +46,12 @@ export default function Payroll({ user }: { user: { role: string, username: stri
     toast('تم توليد مسير الرواتب بنجاح لـ ' + newPayrolls.length + ' موظف');
   };
 
-  
-  const filteredPayrolls = payrolls.filter(p => 
-    (user.role !== 'employee' || p.employeeName === user.username) &&
-    (p.employeeName.includes(search) || p.employeeId.includes(search))
-  );
+  const filteredPayrolls = payrolls.filter(p => {
+    if (isRegular && p.employeeName !== user.username) return false;
+    const emp = employees.find(e => e.id === p.employeeId || e.fullName === p.employeeName);
+    if (isRegular && emp && isManagerEmployee(emp)) return false;
+    return p.employeeName.includes(search) || p.employeeId.includes(search);
+  });
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">

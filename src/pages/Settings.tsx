@@ -1,20 +1,85 @@
 import React from 'react';
-import { Settings as SettingsIcon, Bell, Shield, Key, HardDrive, Globe } from 'lucide-react';
+import { Settings as SettingsIcon, Bell, Shield, Key, HardDrive, Globe, SlidersHorizontal, RefreshCw, CheckCircle2, Laptop, HelpCircle, X, Usb, ArrowLeft, Database, Sparkles, Cable, Server, Copy, Check, Terminal, ExternalLink, Activity, GitBranch } from 'lucide-react';
 import { useStore } from '../store';
 import { toast } from '../components/Toast';
 import { validatePassword } from '../lib/validators';
+import FieldRequirementsModal from '../components/FieldRequirementsModal';
+import EthernetServerModal from '../components/EthernetServerModal';
+import GitHubUpdateModal from '../components/GitHubUpdateModal';
+import GitHubUpdate from '../components/GitHubUpdate';
+import { getStoredServerConfig, fetchNetworkInterfaces, saveServerConfig } from '../lib/serverSync';
+import { executeLiveAutoBackup } from '../lib/autoBackup';
+import { APP_VERSION, APP_RELEASE_DATE, APP_BUILD_TYPE } from '../version';
 
-export default function Settings({ user }: { user?: { username: string, role?: string } }) {
-  const { backupPath, setBackupPath, lastBackupDate, setLastBackupDate, setRecoveryCodes } = useStore();
+export default function Settings({ user }: { user?: { username: string, role?: string, permissions?: string[] } }) {
+  const { backupPath, setBackupPath, lastBackupDate, setLastBackupDate, setRecoveryCodes, requiredFields } = useStore();
   const [bPath, setBPath] = React.useState(backupPath || '');
   const [showPasswordModal, setShowPasswordModal] = React.useState(false);
+  const [showFieldRequirementsModal, setShowFieldRequirementsModal] = React.useState(false);
+  const [showPatchGuide, setShowPatchGuide] = React.useState(false);
+  const [showEthernetModal, setShowEthernetModal] = React.useState(false);
+  const [showGitHubModal, setShowGitHubModal] = React.useState(false);
+  const [serverIp, setServerIp] = React.useState('192.168.1.1');
+  const [serverPort, setServerPort] = React.useState('3000');
+  const [copiedEthLink, setCopiedEthLink] = React.useState(false);
   const [passwords, setPasswords] = React.useState({ old: '', new: '', confirm: '' });
+
+  const isDevOrAdmin = user?.role === 'admin' || user?.role === 'developer' || user?.permissions?.includes('all');
+
+  React.useEffect(() => {
+    try {
+      const conf = getStoredServerConfig();
+      if (conf.customEthernetIp) {
+        setServerIp(conf.customEthernetIp);
+      } else {
+        fetchNetworkInterfaces().then(info => {
+          if (info.ethernetIp) setServerIp(info.ethernetIp);
+        }).catch(() => {});
+      }
+      if (conf.port) {
+        setServerPort(String(conf.port));
+      }
+    } catch (e) {}
+  }, []);
+
+  const handleSaveServerConfig = () => {
+    if (!isDevOrAdmin) {
+      toast('عفواً، تعديل إعدادات الخادم متاح لمدير النظام والمطور فقط');
+      return;
+    }
+    const cleanIp = serverIp.trim() || '192.168.1.1';
+    const cleanPort = parseInt(serverPort.trim(), 10) || 3000;
+    saveServerConfig({
+      customEthernetIp: cleanIp,
+      port: cleanPort
+    });
+    toast('تم حفظ وتطبيق إعدادات الخادم السلكي بنجاح');
+  };
   const { employees, updateEmployee, addSystemLog, systemSettings, updateSystemSettings } = useStore();
   const [compName, setCompName] = React.useState(systemSettings?.companyName || '');
+  const isAdmin = user?.role === 'admin' || user?.role === 'developer' || user?.permissions?.includes('all');
+
+  const handleCheckUpdates = () => {
+    if (typeof window !== 'undefined' && (window as any).require) {
+      try {
+        const { ipcRenderer } = (window as any).require('electron');
+        ipcRenderer.send('check-for-updates');
+        toast('جاري فحص الأقراص المحمولة (USB) للبحث عن تحديثات...');
+      } catch (e) {
+        toast('تعذر فحص التحديثات');
+      }
+    } else {
+      toast(`أنت تعمل حالياً بأحدث إصدار من المنظومة (${APP_VERSION})`);
+    }
+  };
+
 
   const handleSaveBackup = () => {
-    setBackupPath(bPath);
-    toast('تم تحديث مسار النسخ الاحتياطي');
+    const finalPath = bPath.trim() || 'D:\\HR_Backup';
+    setBackupPath(finalPath);
+    setBPath(finalPath);
+    executeLiveAutoBackup(useStore);
+    toast('تم اعتماد مسار النسخة الاحتياطية وحفظ نسخة متزامنة فوراً بنجاح');
   };
 
   const handleRunBackup = () => {
@@ -135,92 +200,358 @@ export default function Settings({ user }: { user?: { username: string, role?: s
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2 mb-4">
-            <HardDrive size={20} className="text-blue-500" />
-            النسخ الاحتياطي (للأجهزة المحلية)
-          </h3>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">مسار النسخة الاحتياطية (مثل D:\Backup)</label>
-              
-              <div className="flex gap-2 items-center">
-                <input 
-                  type="text"
-                  dir="ltr"
-                  value={bPath}
-                  onChange={(e) => setBPath(e.target.value)}
-                  readOnly placeholder="اختر مسار الحفظ..."
-                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <input 
-                  type="file" 
-                  id="settings-folder-picker"
-                  className="hidden"
-                  /* @ts-ignore */
-                  webkitdirectory="true"
-                  directory="true"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files.length > 0) {
-                      const file = e.target.files[0];
-                      const fullPath = file.path || file.webkitRelativePath;
-                      if (fullPath) {
-                         const dirPath = fullPath.substring(0, Math.max(fullPath.lastIndexOf('\\'), fullPath.lastIndexOf('/')));
-                         setBPath(dirPath || fullPath);
-                      }
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => document.getElementById('settings-folder-picker')?.click()}
-                  className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-300 text-sm font-medium transition-colors"
-                >
-                  تصفح...
-                </button>
-                <button 
-                  onClick={handleSaveBackup}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium"
-                >
-                  حفظ
-                </button>
-              </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                <HardDrive size={20} className="text-blue-600" />
+                النسخ الاحتياطي التلقائي والمزدوج
+              </h3>
+              <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                <CheckCircle2 size={13} />
+                تخزين متزامن فوري دائم
+              </span>
+            </div>
 
-              <p className="text-xs text-slate-500 mt-2">يُستخدم هذا المسار لحفظ نسخة من بيانات البرنامج في حالة تشغيله كبرنامج سطح مكتب مستقل.</p>
-              
-              <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-100 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-800">آخر نسخة احتياطية</p>
-                  <p className="text-xs text-slate-500 text-right mt-1" dir="ltr">
-                    {lastBackupDate ? new Date(lastBackupDate).toLocaleString('ar-SA') : 'لم يتم إجراء أي نسخة احتياطية بعد'}
-                  </p>
-                </div>
+            <p className="text-xs text-slate-500 leading-relaxed mb-4">
+              تقوم المنظومة تلقائياً وبشكل فوري بحفظ البيانات في قاعدة بياناتها الأساسية، وتكرار حفظها في مسار النسخة الاحتياطية المعتمد أدناه مع كل عملية (إضافة، تعديل، حذف)، دون الحاجة لطلب نسخة يدوية من المستخدم أو المدير كل مرة.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  مسار النسخة الاحتياطية المعتمد (مثل D:\HR_Backup أو قرص خارجي USB):
+                </label>
                 
-                <div className="flex gap-2">
-                  <label className="bg-slate-100 border border-slate-200 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-200 text-sm font-medium transition-colors cursor-pointer flex items-center justify-center">
-                    استعادة نسخة
-                    <input type="file" accept=".json" className="hidden" onChange={handleRestoreBackup} />
-                  </label>
-                  <button 
-                    onClick={handleRunBackup}
-                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm font-medium transition-colors"
+                <div className="flex gap-2 items-center">
+                  <input 
+                    type="text"
+                    dir="ltr"
+                    value={bPath}
+                    onChange={(e) => setBPath(e.target.value)}
+                    placeholder="D:\HR_Backup"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-xs font-mono outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                  />
+                  <input 
+                    type="file" 
+                    id="settings-folder-picker"
+                    className="hidden"
+                    /* @ts-ignore */
+                    webkitdirectory="true"
+                    directory="true"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        const file = e.target.files[0];
+                        const fullPath = (file as any).path || file.webkitRelativePath;
+                        if (fullPath) {
+                           const dirPath = fullPath.substring(0, Math.max(fullPath.lastIndexOf('\\'), fullPath.lastIndexOf('/')));
+                           setBPath(dirPath || fullPath);
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('settings-folder-picker')?.click()}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer border border-slate-200"
                   >
-                    إجراء نسخة الآن
+                    تصفح...
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={handleSaveBackup}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-sm shadow-blue-200"
+                  >
+                    حفظ وتحديث
                   </button>
                 </div>
 
+                <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">حالة الحفظ المتزامن:</p>
+                      <p className="text-[11px] text-slate-500">
+                        {lastBackupDate ? `آخر حفظ وتحديث بالنسخة: ${new Date(lastBackupDate).toLocaleTimeString('ar-LY')} (${new Date(lastBackupDate).toLocaleDateString('ar-LY')})` : 'يعمل تلقائياً عند أي تعديل'}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <label className="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-50 text-xs font-medium transition-colors cursor-pointer flex items-center justify-center">
+                      استعادة نسخة
+                      <input type="file" accept=".json" className="hidden" onChange={handleRestoreBackup} />
+                    </label>
+                    <button 
+                      type="button"
+                      onClick={handleRunBackup}
+                      className="bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-slate-900 text-xs font-medium transition-colors cursor-pointer"
+                      title="تنزيل نسخة يدوية بتنسيق JSON لجهازك"
+                    >
+                      تنزيل ملف نسخة
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
+        {/* Updates Management Card */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                <Laptop size={20} className="text-blue-600" />
+                إدارة التحديثات والترقية التشطيبية
+              </h3>
+              <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                <CheckCircle2 size={13} />
+                تحديث تراكمي في نفس المسار
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-500 leading-relaxed mb-4">
+              جميع النسخ المستخرجة من المنظومة مُعدة تلقائياً لتعمل كترقية واستبدال مباشر للنسخة السابقة (In-Place Upgrade)؛ يتم تحديث ملفات النظام في نفس المسار مع الحفاظ التام على الموظفين وقواعد البيانات دون إنشاء أي نسخة إضافية أو تكرار الأيقونات.
+            </p>
+
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2 mb-4 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">رقم الإصدار الحالي:</span>
+                <span className="font-mono font-bold text-blue-700 text-sm">{APP_VERSION}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">تاريخ الإصدار:</span>
+                <span className="font-mono text-slate-700">{APP_RELEASE_DATE}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">طريقة الترقية:</span>
+                <span className="text-slate-700 font-semibold">{APP_BUILD_TYPE}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setShowGitHubModal(true)}
+              className="w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-slate-900 to-indigo-950 hover:from-black hover:to-indigo-900 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+            >
+              <GitBranch size={15} className="text-blue-400" />
+              <span>تحديث المنظومة عبر GitHub</span>
+            </button>
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setShowPatchGuide(true)}
+                className="w-full sm:w-auto px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <HelpCircle size={14} className="text-blue-600" />
+                كيف يعمل التحديث بالفلاش؟
+              </button>
+              <button
+                type="button"
+                onClick={handleCheckUpdates}
+                className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-sm shadow-blue-200 cursor-pointer"
+              >
+                <RefreshCw size={14} />
+                فحص فلاشة (USB)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* GitHub Direct Synchronization & Update Component for Manager */}
+        <div className="md:col-span-2">
+          <GitHubUpdate />
+        </div>
+
+        {/* Simplified Ethernet LAN Server Inline Card */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between md:col-span-2">
+          <div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center">
+                  <Cable size={22} className="animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                    الخادم السلكي المباشر (كابل إيثرنت فقط)
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    يعمل الخادم تلقائياً في الخلفية لمشاركة المنظومة مع الجهاز الآخر دون الحاجة لشبكة واي فاي أو إنترنت
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1 rounded-full font-bold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                  يعمل تلقائياً (Auto-Running)
+                </span>
+                {!isDevOrAdmin && (
+                  <span className="text-[11px] bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-md font-medium">
+                    🔒 التعديل متاح للمدير والمطور فقط
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Editable Fields: IP and Port */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 my-4">
+              {/* Field 1: IP Address */}
+              <div className="sm:col-span-2 space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  عنوان الآي بي لمدخل كابل الإيثرنت (Ethernet IP):
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    dir="ltr"
+                    value={serverIp}
+                    onChange={(e) => setServerIp(e.target.value)}
+                    disabled={!isDevOrAdmin}
+                    placeholder="192.168.1.1"
+                    className={`w-full px-3.5 py-2.5 rounded-xl font-mono text-sm border outline-none transition-all ${
+                      isDevOrAdmin 
+                        ? 'bg-slate-50 border-slate-200 focus:bg-white focus:ring-2 focus:ring-emerald-500 text-slate-900 font-bold'
+                        : 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'
+                    }`}
+                  />
+                  {!isDevOrAdmin && (
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">
+                      🔒 للقراءة فقط
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  الآي بي الخاص بكرت كابل الشبكة في هذا الجهاز (المستضيف).
+                </p>
+              </div>
+
+              {/* Field 2: Port */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  منفذ الاتصال (Port):
+                </label>
+                <input
+                  type="text"
+                  dir="ltr"
+                  value={serverPort}
+                  onChange={(e) => setServerPort(e.target.value)}
+                  disabled={!isDevOrAdmin}
+                  placeholder="3000"
+                  className={`w-full px-3.5 py-2.5 rounded-xl font-mono text-sm border text-center outline-none transition-all ${
+                    isDevOrAdmin 
+                      ? 'bg-slate-50 border-slate-200 focus:bg-white focus:ring-2 focus:ring-emerald-500 text-slate-900 font-bold'
+                      : 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'
+                  }`}
+                />
+                <p className="text-[11px] text-slate-500">
+                  المنفذ الافتراضي هو 3000.
+                </p>
+              </div>
+            </div>
+
+            {/* Direct Access Link Box */}
+            <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                  <Terminal size={14} className="text-emerald-600" />
+                  رابط الدخول المباشر للجهاز الثاني (عبر كابل الإيثرنت):
+                </span>
+                <span className="text-[11px] text-emerald-800 font-medium">
+                  يُكتب في متصفح الجهاز الثاني (Chrome / Edge)
+                </span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="flex-1 bg-white border border-emerald-300 rounded-xl px-3.5 py-2 text-emerald-900 font-mono font-bold text-sm" dir="ltr">
+                  http://{serverIp.trim() || '192.168.1.1'}:{serverPort.trim() || '3000'}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = `http://${serverIp.trim() || '192.168.1.1'}:${serverPort.trim() || '3000'}`;
+                    navigator.clipboard.writeText(url);
+                    setCopiedEthLink(true);
+                    toast('تم نسخ الرابط المباشر للجهاز الثاني بنجاح');
+                    setTimeout(() => setCopiedEthLink(false), 2500);
+                  }}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  {copiedEthLink ? <Check size={14} /> : <Copy size={14} />}
+                  {copiedEthLink ? 'تم النسخ!' : 'نسخ الرابط للجهاز الثاني'}
+                </button>
+
+                {isDevOrAdmin && (
+                  <button
+                    type="button"
+                    onClick={handleSaveServerConfig}
+                    className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    حفظ التعديلات
+                  </button>
+                )}
+              </div>
+
+              <p className="text-[11px] text-emerald-800 leading-relaxed">
+                💡 بمجرد توصيل الكابل بين الجهازين، افتح متصفح الجهاز الثاني واكتب الرابط أعلاه لتفتح المنظومة فوراً وتتزامن البيانات تلقائياً.
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <span className="text-slate-400 text-[11px]">
+              * الخادم يبث المنظومة حصرياً عبر مدخل كابل الإيثرنت لضمان السرعة الفائقة والأمان التام.
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowEthernetModal(true)}
+              className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <HelpCircle size={14} />
+              دليل ضبط الآي بي في ويندوز (إرشادات تفصيلية)
+            </button>
+          </div>
+        </div>
+
         
+        {isAdmin && (
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <h3 className="text-lg font-semibold text-slate-800 flex items-center justify-between gap-2 mb-4">
+              <span className="flex items-center gap-2">
+                <SlidersHorizontal size={20} className="text-blue-500" />
+                تخصيص حقول الموظفين (إجباري / اختياري)
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowFieldRequirementsModal(true)}
+                className="text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg font-bold transition-colors"
+              >
+                تعديل الحقول
+              </button>
+            </h3>
+            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+              يمكن لمدير النظام تحديد الحقول الإلزامية التي يفرض على المستخدم تعبئتها قبل حفظ الموظف. افتراضياً، جميع البيانات اختيارية عدا <strong>الاسم الكامل</strong>.
+            </p>
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 flex items-center justify-between text-xs">
+              <span className="text-slate-600">عدد الحقول الإلزامية حالياً:</span>
+              <span className="font-bold text-blue-700 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs">
+                {Object.values(requiredFields || {}).filter(Boolean).length} حقول
+              </span>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2 mb-4">
             <Globe size={20} className="text-blue-500" />
             إعدادات المؤسسة
           </h3>
           <div className="space-y-4">
+            {isAdmin && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">اسم المؤسسة</label>
               <div className="flex gap-2">
@@ -243,6 +574,7 @@ export default function Settings({ user }: { user?: { username: string, role?: s
                 </button>
               </div>
             </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">اللغة الافتراضية</label>
               <select 
@@ -338,6 +670,130 @@ export default function Settings({ user }: { user?: { username: string, role?: s
           </div>
         </div>
       )}
+
+      {/* Field Requirements Modal */}
+      <FieldRequirementsModal
+        isOpen={showFieldRequirementsModal}
+        onClose={() => setShowFieldRequirementsModal(false)}
+      />
+
+      {/* Patch Guide Modal */}
+      {showPatchGuide && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" dir="rtl">
+          <div className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div className="p-5 bg-gradient-to-r from-blue-700 to-indigo-800 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                  <Usb size={22} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold">دليل الترقية التشطيبية عن طريق الفلاش (USB)</h2>
+                  <p className="text-xs text-blue-100">كيف تُحدث النسخة القديمة فقط في مكانها دون مساس بالبيانات</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPatchGuide(false)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-5 text-sm">
+              {/* Core Guarantee Banner */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3 text-emerald-900">
+                <CheckCircle2 size={22} className="text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-sm">الضمانة البرمجية: تحديث مباشر في نفس المسار (In-Place Upgrade)</p>
+                  <p className="text-xs text-emerald-700 mt-1 leading-relaxed">
+                    النظام مُبرمج بمعرف موحد <code className="bg-emerald-100/70 px-1.5 py-0.5 rounded font-mono text-[11px]">com.hrsystem.app</code>. عند تشغيل أي تحديث جديد، لن يُنشئ نسخة جديدة أو مساراً منفصلاً، بل سيستبدل ملفات النسخة القديمة مباشرة ويحافظ على جميع الموظفين والبيانات المخزنة بنسبة 100%.
+                  </p>
+                </div>
+              </div>
+
+              {/* Method 1 */}
+              <div className="border border-slate-200 rounded-xl p-4.5 bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-2 mb-2 font-bold text-slate-800">
+                  <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center">1</span>
+                  الطريقة الأولى: التثبيت المباشر بالنقرة الواحدة من الفلاشة (الأسهل والأسرع)
+                </div>
+                <ol className="list-decimal list-inside space-y-1.5 text-xs text-slate-600 mr-2 leading-relaxed">
+                  <li>انسخ ملف التحديث <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 font-mono text-blue-700 font-bold">HR-System-Update-{APP_VERSION}.exe</code> إلى الفلاش ميموري.</li>
+                  <li>صِل الفلاشة بالجهاز القديم.</li>
+                  <li>افتح الفلاشة واضغط نقرة مزدوجة على الملف.</li>
+                  <li>سيقوم المثبت تلقائياً بالتعرف على النسخة السابقة، واستبدال ملفاتها القديمة بالجديدة في ثوانٍ، ثم تشغيل المنظومة تلقائياً بكامل بياناتك السابقة.</li>
+                </ol>
+              </div>
+
+              {/* Method 2 */}
+              <div className="border border-slate-200 rounded-xl p-4.5 bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-2 mb-2 font-bold text-slate-800">
+                  <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center">2</span>
+                  الطريقة الثانية: التحديث التلقائي الصامت من داخل المنظومة
+                </div>
+                <ol className="list-decimal list-inside space-y-1.5 text-xs text-slate-600 mr-2 leading-relaxed">
+                  <li>انسخ مجلد التحديثات <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 font-mono text-indigo-700 font-bold">HR_Update</code> بالكامل إلى الفلاش ميموري (يحتوي بداخله على ملف التحديث وملف <code className="font-mono">latest.yml</code>).</li>
+                  <li>صِل الفلاشة بجهاز الكمبيوتر.</li>
+                  <li>عند فتح المنظومة أو الضغط على زر <strong className="text-slate-800">«فحص التحديثات من الفلاشة»</strong>، سيكتشف النظام التحديث فوراً ويظهر لك رسالة: <span className="text-blue-600 font-semibold">"تم اكتشاف إصدار جديد ({APP_VERSION})، هل تريد التحديث الآن؟"</span>.</li>
+                  <li>اضغط <strong className="text-emerald-700">«نعم، حدّث الآن»</strong> وسيقوم النظام بتحديث نفسه وإعادة التشغيل ذاتياً.</li>
+                </ol>
+              </div>
+
+              {/* Guarantees List */}
+              <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-4">
+                <h4 className="font-bold text-xs text-blue-900 mb-2 flex items-center gap-1.5">
+                  <Database size={15} className="text-blue-600" />
+                  ماذا يحدث لبياناتك القديمة أثناء التحديث؟
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-blue-800">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                    <span>سجلات الموظفين: محفوظة بالكامل.</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                    <span>الرواتب والإجازات: تظل كما هي.</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                    <span>أيقونة واحدة فقط على سطح المكتب وقائمة ابدأ.</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                    <span>لا حاجة لإعادة إدخال أو استيراد البيانات يدوياً.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs text-slate-500">
+                الإصدار الحالي: <strong className="text-blue-600 font-mono">{APP_VERSION}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowPatchGuide(false)}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                فهمت ذلك، إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ethernet Server Modal */}
+      <EthernetServerModal
+        isOpen={showEthernetModal}
+        onClose={() => setShowEthernetModal(false)}
+      />
+
+      {/* GitHub In-App Update Modal */}
+      <GitHubUpdateModal
+        isOpen={showGitHubModal}
+        onClose={() => setShowGitHubModal(false)}
+      />
     </div>
   );
 }

@@ -84,12 +84,52 @@ export interface Equipment {
   notes: string;
 }
 
+export interface CustomField {
+  id: string;
+  section: string;
+  label: string;
+  value: string;
+  width?: 'half' | 'full' | '1' | '2' | '3';
+  isRequired?: boolean;
+  type?: 'text' | 'number' | 'date';
+  scope?: 'employee' | 'global';
+  employeeId?: string;
+}
+
+export interface FieldRequirementConfig {
+  key: string;
+  label: string;
+  section: 'basic' | 'work' | 'personal' | 'bank';
+  description?: string;
+  defaultRequired?: boolean;
+  isPermanentRequired?: boolean;
+}
+
+export type DocumentCategory = 
+  | 'passport' 
+  | 'national_id' 
+  | 'certificate' 
+  | 'contract' 
+  | 'medical' 
+  | 'license' 
+  | 'bank' 
+  | 'other';
+
 export interface Document {
   id: string;
   name: string;
   type: string;
+  category?: DocumentCategory;
   uploadDate: string;
   fileId?: string;
+  documentNo?: string;
+  issueDate?: string;
+  expiryDate?: string;
+  issuer?: string;
+  notes?: string;
+  source?: 'scanner' | 'camera' | 'upload';
+  fileSize?: string;
+  thumbnail?: string;
 }
 
 export interface AuditLog {
@@ -137,6 +177,7 @@ export interface Employee {
   timezone: string;
   defaultRole: string;
   additionalRoles: string[];
+  customPermissions?: string[];
   remoteWorkType: 'مكتب' | 'منزل' | 'مختلط';
   workSchedule: string;
 
@@ -166,6 +207,17 @@ export interface Employee {
   emergencyContactPhone2?: string;
   emergencyContactRelativePhone?: string;
 
+  // Bank Info (بيانات المصرف)
+  bankName?: string;
+  bankBranch?: string;
+  bankAccountNumber?: string;
+  bankIban?: string;
+  bankAccountHolder?: string;
+  bankSwift?: string;
+  bankAccountType?: string;
+  bankCurrency?: string;
+  bankNotes?: string;
+
   // Collections
   educations: Education[];
   experiences: Experience[];
@@ -176,9 +228,11 @@ export interface Employee {
   documents: Document[];
   auditLogs: AuditLog[];
   bonuses?: Bonus[];
+  customFields?: CustomField[];
 
   // System Data
   employeeId: string;
+  fingerprintId?: string; // رقم البصمة في جهاز البصمة (Enroll ID / PIN)
   employmentCategory?: 'موظف أساسي' | 'متعاقد' | 'متعاون';
   status: EmployeeStatus;
   performanceRating?: PerformanceRating;
@@ -201,15 +255,71 @@ export interface AttendanceMovement {
   time: string;
   minutesFromMidnight: number;
   note?: string;
+  verifyType?: string;
+  deviceSn?: string;
 }
 
 export interface AttendanceRecord {
   id: string;
   employeeId: string;
   employeeName: string;
-  date: string;
+  date: string; // YYYY-MM-DD
   status: 'Present' | 'Late' | 'Absent' | 'Leave';
   movements: AttendanceMovement[];
+  workHours?: number; // مجموع ساعات العمل
+  delayMinutes?: number; // دقائق التأخير عن بداية الدوام
+  earlyLeaveMinutes?: number; // دقائق المغادرة المبكرة
+  notes?: string;
+  source?: 'manual' | 'zkteco' | 'mobile';
+}
+
+export interface RawFingerprintPunch {
+  pin: string;
+  name?: string;
+  timestamp: Date;
+  dateStr: string;
+  timeStr: string;
+  state?: 'in' | 'out' | 'auto';
+  verifyType?: string;
+  workCode?: string;
+}
+
+export interface AttendanceImportPreviewRow {
+  id: string;
+  pin: string;
+  matchedEmployeeId?: string;
+  matchedEmployeeName?: string;
+  originalNameInFile?: string;
+  matchMethod: 'fingerprintId' | 'employeeId' | 'fullName' | 'nationalId' | 'manual' | 'none';
+  date: string;
+  checkInTime?: string;
+  checkOutTime?: string;
+  allTimes: string[];
+  movements: AttendanceMovement[];
+  totalHours: number;
+  delayMinutes: number;
+  status: 'Present' | 'Late' | 'Absent' | 'Leave';
+  isExisting: boolean;
+  existingRecordId?: string;
+  action: 'create' | 'merge' | 'skip';
+  error?: string;
+}
+
+export interface AttendanceImportConfig {
+  workStartTime: string; // "08:30"
+  workEndTime: string; // "16:30"
+  lateGraceMinutes: number; // 15
+  mergeStrategy: 'merge' | 'overwrite' | 'skip';
+  autoLinkUnknownByEnrollId: boolean;
+}
+
+export interface AttendanceImportResult {
+  totalPunches: number;
+  totalDaysProcessed: number;
+  newRecordsCreated: number;
+  recordsUpdated: number;
+  unmatchedRecords: number;
+  savedRecordsCount: number;
 }
 
 export interface Candidate {
@@ -256,4 +366,38 @@ export interface SystemSettings {
   logoUrl?: string;
   primaryLanguage: 'ar' | 'en';
   fiscalYearStart: string;
+  workStartTime?: string; // Default '08:30'
+  workEndTime?: string; // Default '16:30'
+  lateGracePeriodMinutes?: number; // Default 15
+}
+
+export interface GlobalCustomField {
+  id: string;
+  section: string;
+  label: string;
+  width: '1' | '2' | '3';
+  isRequired?: boolean;
+  type?: 'text' | 'number' | 'date';
+}
+
+export type ServerRole = 'host' | 'client' | 'standalone';
+
+export interface NetworkInterfaceInfo {
+  name: string;
+  ip: string;
+  type: 'ethernet' | 'wifi' | 'other';
+  isEthernet: boolean;
+  mac?: string;
+}
+
+export interface ServerStatusInfo {
+  running: boolean;
+  port: number;
+  hostName: string;
+  role: ServerRole;
+  ethernetIp?: string;
+  wifiIp?: string;
+  interfaces: NetworkInterfaceInfo[];
+  connectedClients?: number;
+  lastSync?: string;
 }

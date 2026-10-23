@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Shield } from 'lucide-react';
 import { useStore } from '../store';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
@@ -18,21 +18,38 @@ import AuditLogs from '../pages/AuditLogs';
 import BackupModal from './BackupModal';
 import { mockEmployees, mockLeaves } from '../data';
 import { Employee, LeaveRequest } from '../types';
+import { isManagerEmployee, isRegularUser } from '../lib/managerGuard';
 
-export default function Layout({ user, onLogout }: { user: { role: string, username: string }, onLogout: () => void }) {
+export default function Layout({ user, onLogout }: { user: { role: string, username: string, permissions: string[] }, onLogout: () => void }) {
   const { employees, leaves, addEmployee, updateEmployee, backupPath, lastBackupDate } = useStore();
-  const [currentMenu, setCurrentMenu] = useState(user.role === 'employee' ? 'settings' : 'dashboard');
+  
+  const getDefaultMenu = () => {
+    const isAdmin = user.role === 'admin' || user.role === 'developer' || user.permissions?.includes('all');
+    if (isAdmin) return 'dashboard';
+    if (user.permissions?.includes('view_dashboard')) return 'dashboard';
+    if (user.permissions?.includes('manage_employees') || user.permissions?.includes('add_employee')) return 'employees';
+    if (user.permissions?.includes('manage_attendance')) return 'attendance';
+    if (user.permissions?.includes('manage_leaves')) return 'leaves';
+    if (user.permissions?.includes('view_payroll') || user.role === 'accountant') return 'payroll';
+    if (user.permissions?.includes('manage_settings')) return 'settings';
+    return 'attendance';
+  };
+
+  const [currentMenu, setCurrentMenu] = useState(getDefaultMenu);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [addingCategory, setAddingCategory] = useState<'موظف أساسي' | 'متعاقد' | 'متعاون'>('موظف أساسي');
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Redirect to correct default page if role changes
+  // Sync menu if user permissions change and current menu is no longer accessible
   useEffect(() => {
-    if (user.role === 'employee' && !['settings', 'payroll', 'performance', 'leaves', 'attendance'].includes(currentMenu)) {
-      setCurrentMenu('settings');
+    const isAdmin = user.role === 'admin' || user.role === 'developer' || user.permissions?.includes('all');
+    if (!isAdmin) {
+      if (currentMenu === 'settings' && !user.permissions?.includes('manage_settings')) {
+        setCurrentMenu(getDefaultMenu());
+      }
     }
-  }, [user.role, currentMenu]);
+  }, [user.permissions, user.role]);
 
   const handleSave = (emp: Employee) => {
     if (isAdding) {
@@ -46,14 +63,42 @@ export default function Layout({ user, onLogout }: { user: { role: string, usern
 
   const renderContent = () => {
     // Role-based routing protection
-    if (user.role === 'employee' && !['settings', 'payroll', 'performance', 'leaves', 'attendance'].includes(currentMenu)) {
-      return <div className="text-center p-8 text-red-500">غير مصرح لك بالوصول لهذه الوحدة</div>;
-    }
-    if (user.role === 'accountant' && currentMenu === 'recruitment') {
-      return <div className="text-center p-8 text-red-500">غير مصرح لك بالوصول لهذه الوحدة</div>;
+    const isAdmin = user.role === 'admin' || user.role === 'developer' || user.permissions?.includes('all');
+    let hasAccess = false;
+    
+    if (isAdmin) {
+      hasAccess = true;
+    } else {
+      const permMap: Record<string, string> = {
+        'dashboard': 'view_dashboard',
+        'employees': 'manage_employees',
+        'payroll': 'view_payroll',
+        'attendance': 'manage_attendance',
+        'leaves': 'manage_leaves',
+        'settings': 'manage_settings',
+        'roles': 'all',
+        'recruitment': 'all',
+        'audit_logs': 'all',
+      };
+      
+      const reqPerm = permMap[currentMenu];
+      if (reqPerm && user.permissions?.includes(reqPerm)) {
+        hasAccess = true;
+      } else if (currentMenu === 'employees' && user.permissions?.includes('add_employee')) {
+        hasAccess = true;
+      } else if (!reqPerm && (user.role === 'accountant' || user.role === 'employee')) {
+        hasAccess = true; 
+      }
+      
+      if (user.role === 'accountant' && currentMenu === 'recruitment') hasAccess = false;
+      if (currentMenu === 'dev_settings' && user.role !== 'developer') hasAccess = false;
+      // Never allow regular employee into settings without manage_settings permission
+      if (currentMenu === 'settings' && !user.permissions?.includes('manage_settings')) hasAccess = false;
     }
 
-    if (currentMenu === 'dashboard') return <Dashboard />;
+    if (!hasAccess) return <div className="text-center p-8 text-red-500 font-bold">غير مصرح لك بالوصول لهذه الوحدة</div>;
+
+    if (currentMenu === 'dashboard') return <Dashboard user={user} />;
     
     if (currentMenu === 'payroll') return <Payroll user={user} />;
     
@@ -66,7 +111,7 @@ export default function Layout({ user, onLogout }: { user: { role: string, usern
     if (currentMenu === 'attendance') return <Attendance user={user} />;
 
     if (currentMenu === 'audit_logs' && (user.role === 'admin' || user.role === 'developer')) return <AuditLogs />;
-    if (currentMenu === 'roles' && (user.role === 'admin' || user.role === 'developer')) return <Roles />;
+    if (currentMenu === 'roles' && (user.role === 'admin' || user.role === 'developer' || user.permissions?.includes('all'))) return <Roles />;
 
     if (currentMenu === 'dev_settings' && user.role === 'developer') return <DeveloperSettings />;
 
@@ -75,13 +120,35 @@ export default function Layout({ user, onLogout }: { user: { role: string, usern
     }
 
     if (currentMenu === 'employees') {
+      const selectedEmp = employees.find(e => e.id === selectedEmployeeId);
+      if (selectedEmp && isRegularUser(user) && isManagerEmployee(selectedEmp)) {
+        return (
+          <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-sm max-w-lg mx-auto my-12" dir="rtl">
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Shield size={32} />
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">غير مصرح لك بالوصول</h3>
+            <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+              بيانات المدير العام / مدير النظام محمية ومخصصة للإدارة العليا فقط، ولا يمكن استعراضها أو الاطلاع عليها أو تعديلها من قبل مسجل البيانات.
+            </p>
+            <button
+              onClick={() => setSelectedEmployeeId(null)}
+              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-colors cursor-pointer shadow-sm shadow-blue-200"
+            >
+              العودة لدليل الموظفين
+            </button>
+          </div>
+        );
+      }
+
       if (selectedEmployeeId || isAdding) {
         return (
           <EmployeeDetail 
+            user={user}
             employee={isAdding ? null : employees.find(e => e.id === selectedEmployeeId) || null}
             initialCategory={addingCategory}
             onSave={handleSave}
-            readOnly={user.role === 'accountant'} // Accountants can edit but let's say they can't fully modify everything? Actually prompt says: accountant edits without delete.
+            readOnly={user.role === 'accountant'}
             onBack={() => {
               setSelectedEmployeeId(null);
               setIsAdding(false);
@@ -92,6 +159,7 @@ export default function Layout({ user, onLogout }: { user: { role: string, usern
 
       return (
         <EmployeeList 
+          user={user}
           userRole={user.role}
           onSelectEmployee={(id) => setSelectedEmployeeId(id)} 
           onAddEmployee={(cat = 'موظف أساسي') => {
@@ -124,11 +192,11 @@ export default function Layout({ user, onLogout }: { user: { role: string, usern
 
   return (
     <div 
-      className="min-h-screen bg-slate-50 font-sans relative" 
+      className="min-h-screen bg-[#f4f7f9] font-sans relative" 
       dir="rtl"
       style={customBg ? { backgroundImage: `url(${customBg})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' } : {}}
     >
-      {customBg && <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm z-0 pointer-events-none"></div>}
+      {customBg && <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-0 pointer-events-none"></div>}
       
       <div className="relative z-10">
         <Sidebar 
@@ -143,39 +211,14 @@ export default function Layout({ user, onLogout }: { user: { role: string, usern
           isCollapsed={isCollapsed}
           toggleCollapse={() => setIsCollapsed(!isCollapsed)}
         />
-      <div className={`transition-all duration-300 flex flex-col min-h-screen relative ${isCollapsed ? 'mr-20' : 'mr-64'}`}>
-        {/* Background Watermark */}
-        <div 
-          className={`pointer-events-none fixed inset-0 z-0 opacity-[0.03] transition-all duration-300 ${isCollapsed ? 'mr-20' : 'mr-64'}`}
-          style={{
-            backgroundImage: `url(${localStorage.getItem('app_logo') || import.meta.env.BASE_URL + 'logo.png'})`,
-            backgroundPosition: 'center',
-            backgroundRepeat: 'no-repeat',
-            backgroundSize: '50% auto'
-          }}
-        />
+      <div className={`transition-all duration-300 flex flex-col min-h-screen relative ${isCollapsed ? 'mr-24' : 'mr-72'}`}>
+        {/* Background Watermark Removed */}
         
         <Topbar 
           user={user} 
           onNavigate={handleNavigate} 
         />
         
-        {/* Backup Alert Banner */}
-        {user.role === 'admin' && backupPath && (!lastBackupDate || (new Date().getTime() - new Date(lastBackupDate).getTime()) / (1000 * 3600 * 24) > 7) && (
-          <div className="bg-red-50 border-b border-red-200 p-3 px-8 flex flex-col sm:flex-row items-center justify-between z-10 relative gap-3">
-            <div className="flex items-center gap-3 text-red-700">
-              <AlertTriangle size={20} className="animate-pulse shrink-0" />
-              <p className="text-sm font-medium">تحذير: لم يتم إجراء نسخة احتياطية للبيانات منذ أكثر من 7 أيام. يرجى إنشاء نسخة احتياطية الآن لضمان أمان البيانات.</p>
-            </div>
-            <button 
-              onClick={() => handleNavigate('settings')}
-              className="text-xs bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors font-medium shadow-sm shrink-0 whitespace-nowrap"
-            >
-              الذهاب للإعدادات
-            </button>
-          </div>
-        )}
-  
         <main className="flex-1 p-8 relative z-0">
           {renderContent()}
         </main>

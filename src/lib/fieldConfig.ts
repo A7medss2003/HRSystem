@@ -1,0 +1,60 @@
+import { FieldRequirementConfig } from '../types';
+
+export const SYSTEM_FIELDS_CONFIG: FieldRequirementConfig[] = [
+  // المعلومات الأساسية
+  { key: 'fullName', label: 'الاسم الكامل', section: 'basic', isPermanentRequired: true, description: 'إلزامي دائم في النظام ولا يمكن إلغاؤه' },
+  { key: 'jobTitle', label: 'المسمى الوظيفي', section: 'basic', defaultRequired: false },
+  { key: 'company', label: 'الشركة / المؤسسة', section: 'basic', defaultRequired: false },
+  { key: 'department', label: 'القسم', section: 'basic', defaultRequired: false },
+  { key: 'management', label: 'الإدارة', section: 'basic', defaultRequired: false },
+  { key: 'directManager', label: 'المدير المباشر', section: 'basic', defaultRequired: false },
+  { key: 'coach', label: 'الموجه', section: 'basic', defaultRequired: false },
+  { key: 'tags', label: 'العلامات التصنيفية', section: 'basic', defaultRequired: false },
+  { key: 'workEmail', label: 'البريد الإلكتروني للعمل', section: 'basic', defaultRequired: false },
+  { key: 'workPhone', label: 'هاتف العمل', section: 'basic', defaultRequired: false },
+  { key: 'workMobile', label: 'الهاتف المحمول للعمل', section: 'basic', defaultRequired: false },
+
+  // معلومات العمل
+  { key: 'fingerprintId', label: 'رقم البصمة في الجهاز (Enroll ID / PIN)', section: 'work', defaultRequired: false, description: 'الرقم المسجل في جهاز البصمة ZKTeco لمطابقة الحضور تلقائياً' },
+  { key: 'workLocation', label: 'موقع العمل (الفرع)', section: 'work', defaultRequired: false },
+  { key: 'workAddress', label: 'عنوان العمل', section: 'work', defaultRequired: false },
+  { key: 'workingHours', label: 'ساعات العمل', section: 'work', defaultRequired: false },
+  { key: 'timezone', label: 'المنطقة الزمنية', section: 'work', defaultRequired: false },
+  { key: 'workSchedule', label: 'جدول أيام العمل', section: 'work', defaultRequired: false },
+  { key: 'remoteWorkType', label: 'نوع العمل عن بعد', section: 'work', defaultRequired: false },
+  { key: 'linkedUser', label: 'اسم المستخدم للدخول', section: 'work', defaultRequired: false },
+  { key: 'password', label: 'كلمة المرور', section: 'work', defaultRequired: false },
+  { key: 'timeOffApprover', label: 'مسؤول اعتماد الإجازات', section: 'work', defaultRequired: false },
+  { key: 'expensesApprover', label: 'مسؤول اعتماد المصروفات', section: 'work', defaultRequired: false },
+  { key: 'timesheetApprover', label: 'مسؤول اعتماد الجداول الزمنية', section: 'work', defaultRequired: false },
+
+  // المعلومات الشخصية
+  { key: 'homeAddress', label: 'عنوان السكن', section: 'personal', defaultRequired: false },
+  { key: 'personalPhone', label: 'الهاتف الشخصي', section: 'personal', defaultRequired: false },
+  { key: 'personalEmail', label: 'البريد الإلكتروني الشخصي', section: 'personal', defaultRequired: false },
+  { key: 'language', label: 'اللغة', section: 'personal', defaultRequired: false },
+  { key: 'gender', label: 'الجنس', section: 'personal', defaultRequired: false },
+  { key: 'maritalStatus', label: 'الحالة الاجتماعية', section: 'personal', defaultRequired: false },
+  { key: 'nationality', label: 'الجنسية', section: 'personal', defaultRequired: false },
+  { key: 'childrenCount', label: 'عدد الأطفال', section: 'personal', defaultRequired: false },
+  { key: 'dob', label: 'تاريخ الميلاد', section: 'personal', defaultRequired: false },
+  { key: 'placeOfBirth', label: 'مكان الميلاد', section: 'personal', defaultRequired: false },
+  { key: 'nationalId', label: 'الرقم الوطني', section: 'personal', defaultRequired: false },
+  { key: 'passportNo', label: 'رقم جواز السفر', section: 'personal', defaultRequired: false },
+  { key: 'visaNo', label: 'رقم التأشيرة', section: 'personal', defaultRequired: false },
+  { key: 'workPermitNo', label: 'رقم تصريح العمل', section: 'personal', defaultRequired: false },
+  { key: 'emergencyContactName', label: 'اسم جهة اتصال الطوارئ', section: 'personal', defaultRequired: false },
+  { key: 'emergencyContactRelation', label: 'صلة قرابة جهة الطوارئ', section: 'personal', defaultRequired: false },
+  { key: 'emergencyContactPhone', label: 'رقم هاتف الطوارئ', section: 'personal', defaultRequired: false },
+
+  // بيانات المصرف
+  { key: 'bankName', label: 'اسم المصرف', section: 'bank', defaultRequired: false },
+  { key: 'bankBranch', label: 'فرع المصرف', section: 'bank', defaultRequired: false },
+  { key: 'bankAccountNumber', label: 'رقم الحساب المصرفي', section: 'bank', defaultRequired: false },
+  { key: 'bankIban', label: 'رقم الآيبان (IBAN)', section: 'bank', defaultRequired: false },
+  { key: 'bankAccountHolder', label: 'اسم صاحب الحساب', section: 'bank', defaultRequired: false },
+  { key: 'bankSwift', label: 'رمز السويفت (SWIFT / BIC)', section: 'bank', defaultRequired: false },
+  { key: 'bankAccountType', label: 'نوع الحساب المصرفي', section: 'bank', defaultRequired: false },
+  { key: 'bankCurrency', label: 'عملة الحساب', section: 'bank', defaultRequired: false },
+  { key: 'bankNotes', label: 'ملاحظات مصرفية إضافية', section: 'bank', defaultRequired: false },
+];

@@ -1,20 +1,17 @@
 const fs = require('fs');
+let file = fs.readFileSync('src/types.ts', 'utf8');
 
-let types = fs.readFileSync('src/types.ts', 'utf8');
-
-const auditLogType = `
-export interface SystemAuditLog {
+const newTypes = `
+export interface GlobalCustomField {
   id: string;
-  userId: string;
-  userName: string;
-  action: string;
-  details: string;
-  timestamp: string;
+  section: string;
+  label: string;
+  width: '1' | '2' | '3';
 }
 `;
 
-if (!types.includes('SystemAuditLog')) {
-  types += auditLogType;
-  fs.writeFileSync('src/types.ts', types);
+if (!file.includes('GlobalCustomField')) {
+  file = file + newTypes;
 }
 
+fs.writeFileSync('src/types.ts', file);

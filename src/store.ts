@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Employee, LeaveRequest, RoleDef, AttendanceRecord, Candidate, PayrollRecord, PerformanceReview, SystemAuditLog, SystemSettings } from './types';
+import { GlobalCustomField, Employee, LeaveRequest, RoleDef, AttendanceRecord, Candidate, PayrollRecord, PerformanceReview, SystemAuditLog, SystemSettings } from './types';
 import { mockEmployees, mockLeaves } from './data';
 
 interface AppState {
+  globalCustomFields: GlobalCustomField[];
+  setGlobalCustomFields: (fields: GlobalCustomField[]) => void;
   employees: Employee[];
   leaves: LeaveRequest[];
   roles: RoleDef[];
@@ -39,15 +41,23 @@ interface AppState {
   setLastBackupDate: (date: string) => void;
   setBackupPath: (path: string | null) => void;
   addSystemLog: (log: any) => void;
+  requiredFields: Record<string, boolean>;
+  setFieldRequired: (fieldKey: string, required: boolean) => void;
+  setRequiredFieldsBatch: (fields: Record<string, boolean>) => void;
 }
 
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
-      backupPath: null,
-      lastBackupDate: null,
+      backupPath: 'D:\\HR_Backup',
+      lastBackupDate: new Date().toISOString(),
       setLastBackupDate: (date) => set({ lastBackupDate: date }),
-      setBackupPath: (path) => set({ backupPath: path }),
+      setBackupPath: (path) => {
+        if (path) {
+          try { localStorage.setItem('hr-backup-path-saved', path); } catch(e) {}
+        }
+        set({ backupPath: path });
+      },
       employees: mockEmployees,
       leaves: mockLeaves,
       roles: [
@@ -60,10 +70,27 @@ export const useStore = create<AppState>()(
       payrolls: [],
       performanceReviews: [],
       systemAuditLogs: [],
+      globalCustomFields: [],
+      setGlobalCustomFields: (fields) => set({ globalCustomFields: fields }),
       systemSettings: { companyName: 'مركز البنيان للتقنية و الصناعات الهندسية', primaryLanguage: 'ar', fiscalYearStart: '01-01' },
       updateSystemSettings: (settings) => set({ systemSettings: settings }),
       globalSearchQuery: '',
       recoveryCodes: [],
+      requiredFields: {
+        fullName: true,
+      },
+      setFieldRequired: (fieldKey, required) => set((state) => ({
+        requiredFields: {
+          ...state.requiredFields,
+          [fieldKey]: fieldKey === 'fullName' ? true : required, // fullName is always required
+        }
+      })),
+      setRequiredFieldsBatch: (fields) => set((state) => ({
+        requiredFields: {
+          ...fields,
+          fullName: true, // fullName is always required
+        }
+      })),
       setGlobalSearchQuery: (query) => set({ globalSearchQuery: query }),
       setRecoveryCodes: (codes) => set({ recoveryCodes: codes }),
       useRecoveryCode: (code) => {

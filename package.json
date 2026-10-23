@@ -1,7 +1,7 @@
 {
-  "name": "react-example",
+  "name": "hr-system",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
@@ -10,7 +10,9 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:5173 && set NODE_ENV=development && electron .\"",
-    "electron:build": "npm run build && electron-builder"
+    "electron:build": "npm run build && electron-builder --win --x64",
+    "build:update": "node scripts/bump-and-build.cjs",
+    "build:update:minor": "node scripts/bump-and-build.cjs minor"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -29,6 +31,7 @@
     "recharts": "^3.10.1",
     "tailwind-merge": "^3.6.0",
     "vite": "^6.2.3",
+    "xlsx": "^0.18.5",
     "zod": "^4.4.3",
     "zustand": "^5.0.15"
   },
@@ -51,9 +54,19 @@
   "build": {
     "appId": "com.hrsystem.app",
     "productName": "HR System",
+    "artifactName": "HR-System-Update-${version}.${ext}",
+    "compression": "normal",
     "directories": {
       "output": "release"
     },
+    "files": [
+      "dist/**/*",
+      "electron-main.cjs",
+      "package.json",
+      "!release/**/*",
+      "!HR_Update/**/*",
+      "!dist_electron/**/*"
+    ],
     "publish": [
       {
         "provider": "generic",
@@ -65,18 +78,25 @@
         {
           "target": "nsis",
           "arch": [
-            "x64",
-            "ia32"
+            "x64"
           ]
         }
       ]
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "نظام الموارد البشرية"
+      "shortcutName": "نظام الموارد البشرية",
+      "uninstallDisplayName": "نظام الموارد البشرية",
+      "deleteAppDataOnUninstall": false,
+      "guid": "com.hrsystem.app",
+      "differentialPackage": false,
+      "runAfterFinish": true,
+      "include": "installer.nsh"
     }
   }
 }

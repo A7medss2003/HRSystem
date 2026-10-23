@@ -3,18 +3,30 @@ import { Calendar, CheckCircle2, Clock, XCircle, Plus, Download } from 'lucide-r
 import { Employee, LeaveRequest } from '../types';
 import clsx from 'clsx';
 import { toast } from '../components/Toast';
+import { isManagerEmployee, isRegularUser } from '../lib/managerGuard';
 
 import { useStore } from '../store';
 
-export default function Leaves({ user }: { user: { role: string, username: string } }) {
+export default function Leaves({ user }: { user: { role: string, username: string, permissions?: string[] } }) {
   const { employees, leaves, addLeave, updateLeave } = useStore();
   const [showModal, setShowModal] = useState(false);
   const [newLeave, setNewLeave] = useState({ type: 'إجازة سنوية', startDate: '', endDate: '', reason: '' });
 
-  const isAdminOrAccountant = ['admin', 'accountant'].includes(user.role);
+  const isAdminOrDeveloper = user.role === 'admin' || user.role === 'developer' || user.permissions?.includes('all');
+  const isAdminOrAccountant = ['admin', 'accountant', 'developer'].includes(user.role) || (user.permissions && user.permissions.includes('all'));
   
-  // For employees, only show their own leaves (mocked to أحمد محمد HR-1001 for now)
-  const displayLeaves = isAdminOrAccountant ? leaves : leaves.filter(l => l.employeeId === 'HR-1001');
+  const currentEmp = employees.find(e => 
+    e.linkedUser?.toLowerCase() === user.username.toLowerCase() || 
+    e.employeeId.toLowerCase() === user.username.toLowerCase() || 
+    e.workEmail.toLowerCase() === user.username.toLowerCase()
+  );
+
+  // For regular employees, only show their own leaves; for others, hide manager leaves if not admin/developer
+  const displayLeaves = isAdminOrDeveloper
+    ? leaves
+    : user.role === 'accountant'
+    ? leaves.filter(l => !employees.some(e => (e.id === l.employeeId || e.fullName === l.employeeName) && isManagerEmployee(e)))
+    : leaves.filter(l => (currentEmp && (l.employeeId === currentEmp.id || l.employeeId === currentEmp.employeeId)) || l.employeeName === user.username);
 
   const handleStatusChange = (id: string, newStatus: 'Approved' | 'Rejected') => {
     const targetLeave = leaves.find(l => l.id === id);

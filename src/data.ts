@@ -1,7 +1,68 @@
 
 import { Employee, LeaveRequest } from './types';
 
-// Only Developer account exists initially
-export const mockEmployees: Employee[] = [];
+// Default Admin account for seamless access without setup prompts
+export const mockEmployees: Employee[] = [
+  {
+    id: 'admin-001',
+    employeeId: 'ADMIN-001',
+    fullName: 'مدير النظام',
+    jobTitle: 'المدير العام',
+    department: 'الإدارة العليا',
+    workEmail: 'admin@system.local',
+    company: 'الشركة',
+    tags: [],
+    workPhone: '',
+    workMobile: '',
+    management: 'الإدارة العامة',
+    directManager: '',
+    coach: '',
+    workAddress: '',
+    workLocation: 'الفرع الرئيسي',
+    timeOffApprover: '',
+    expensesApprover: '',
+    timesheetApprover: '',
+    workingHours: '8',
+    timezone: '',
+    defaultRole: 'admin',
+    additionalRoles: [],
+    remoteWorkType: 'مكتب',
+    workSchedule: '',
+    homeAddress: '',
+    personalPhone: '',
+    personalEmail: '',
+    language: 'Arabic',
+    gender: 'ذكر',
+    maritalStatus: 'متزوج',
+    dob: '1985-01-01',
+    placeOfBirth: 'طرابلس',
+    nationality: 'ليبي',
+    childrenCount: 0,
+    nationalId: '119850000000',
+    passportNo: '',
+    visaNo: '',
+    visaExpiry: '',
+    workPermitNo: '',
+    permitExpiry: '',
+    emergencyContactName: '',
+    emergencyContactRelation: '',
+    emergencyContactPhone: '',
+    educations: [],
+    experiences: [],
+    skills: [],
+    contracts: [],
+    certifications: [],
+    equipments: [],
+    documents: [],
+    auditLogs: [],
+    status: 'نشط',
+    linkedUser: 'admin',
+    password: '1234',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    createdBy: 'system'
+  }
+];
 
 export const mockLeaves: LeaveRequest[] = [];
+

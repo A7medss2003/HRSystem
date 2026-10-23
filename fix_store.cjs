@@ -1,8 +1,7 @@
 const fs = require('fs');
-let content = fs.readFileSync('src/store.ts', 'utf8');
+let file = fs.readFileSync('src/store.ts', 'utf8');
 
-// The file has candidates: []//[ { id... } ],
-content = content.replace(/candidates: \[\]\/\/\[[\s\S]*?\],/g, "candidates: [],");
-content = content.replace(/candidates: \[\]\/\/\[candidate, \.\.\.state.candidates\] \}\)\),/g, "candidates: [candidate, ...state.candidates] })),");
+file = file.replace(/import \{ GlobalCustomField, create \} from 'zustand';/, "import { create } from 'zustand';");
+file = file.replace(/import \{ Employee, /, "import { GlobalCustomField, Employee, ");
 
-fs.writeFileSync('src/store.ts', content);
+fs.writeFileSync('src/store.ts', file);

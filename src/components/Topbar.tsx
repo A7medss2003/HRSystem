@@ -1,7 +1,11 @@
-import { Bell, Search, UserCircle, AlertTriangle, AlertCircle, Calendar, Clock, CheckSquare, X, ShieldAlert } from 'lucide-react';
+import { Bell, Search, UserCircle, AlertTriangle, AlertCircle, Calendar, Clock, CheckSquare, X, ShieldAlert, Cable, Server, GitBranch } from 'lucide-react';
 import React, { useEffect, useState, useRef } from 'react';
 import { toast } from './Toast';
 import { Employee, LeaveRequest } from '../types';
+import { isManagerEmployee, isRegularUser } from '../lib/managerGuard';
+import { getStoredServerConfig, fetchNetworkInterfaces } from '../lib/serverSync';
+import EthernetServerModal from './EthernetServerModal';
+import GitHubUpdateModal from './GitHubUpdateModal';
 
 import { useStore } from '../store';
 
@@ -9,7 +13,7 @@ export default function Topbar({
   user, 
   onNavigate 
 }: { 
-  user: { role: string, username: string }, 
+  user: { role: string, username: string, permissions?: string[] }, 
   onNavigate?: (menu: string, employeeId?: string) => void 
 }) {
   const { employees, leaves, setGlobalSearchQuery, globalSearchQuery } = useStore();
@@ -24,7 +28,27 @@ export default function Topbar({
     }
   });
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showEthernetModal, setShowEthernetModal] = useState(false);
+  const [showGitHubModal, setShowGitHubModal] = useState(false);
+  const [ethernetIp, setEthernetIp] = useState<string>('192.168.1.1');
+  const [serverPort, setServerPort] = useState<number>(3000);
+  const [serverRole, setServerRole] = useState<'host' | 'client' | 'standalone'>('host');
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const conf = getStoredServerConfig();
+      setServerRole(conf.role);
+      if (conf.port) setServerPort(conf.port);
+      if (conf.customEthernetIp) {
+        setEthernetIp(conf.customEthernetIp);
+      } else {
+        fetchNetworkInterfaces().then(info => {
+          if (info.ethernetIp) setEthernetIp(info.ethernetIp);
+        }).catch(() => {});
+      }
+    } catch (e) {}
+  }, [showEthernetModal]);
 
   useEffect(() => {
     localStorage.setItem('dismissed_notifications', JSON.stringify(dismissedIds));
@@ -45,6 +69,8 @@ export default function Topbar({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const isDevOrAdmin = user?.role === 'admin' || user?.role === 'developer' || user?.permissions?.includes('all');
 
   const getRoleName = (role: string) => {
     if (role === 'admin') return 'مدير النظام';
@@ -71,15 +97,14 @@ export default function Topbar({
     onNavigate('employees', myEmpId);
   };
 
-  // Base date for mock calculations (July 9, 2026 to align with mock database timelines)
-  const today = new Date();
-  const baseDate = today.getFullYear() === 2026 ? today : new Date('2026-07-09');
+  // Base date for accurate real-time timeline comparisons
+  const baseDate = new Date();
 
   // Generate notifications based on business logic
   const generatedNotifications = (() => {
     const list: {
       id: string;
-      type: 'contract_expire' | 'contract_expired' | 'leave_active' | 'leave_upcoming' | 'leave_pending' | 'system';
+      type: 'contract_expire' | 'contract_expired' | 'leave_active' | 'leave_upcoming' | 'leave_pending' | 'doc_expire' | 'doc_expired' | 'system';
       title: string;
       description: string;
       date: string;
@@ -87,112 +112,150 @@ export default function Topbar({
       employeeId?: string;
       linkMenu: 'employees' | 'leaves' | 'settings' | 'dev_settings';
     }[] = [];
-
-    // System Updates / Fixes announcements
-    list.push({
-      id: 'sys-update-101',
-      type: 'system',
-      title: 'تحديث النظام وإصلاح أخطاء',
-      description: 'تم إصلاح مشكلة اختفاء الإشعارات بعد التحديث، وتم إضافة أدوات جديدة للمطورين لحل مشاكل الملفات وتفريغ المساحة.',
-      date: new Date().toISOString().split('T')[0],
-      severity: 'info',
-      linkMenu: 'settings'
-    });
     
-    // 1. Scan employee contracts
-    employees.forEach(emp => {
-      emp.contracts?.forEach(contract => {
-        if (contract.endDate) {
-          const end = new Date(contract.endDate);
-          const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    const isAdmin = user.role === 'admin' || user.role === 'developer' || (user.permissions || []).includes('all');
+    const canManageEmployees = isAdmin || (user.permissions || []).includes('manage_employees');
+    const canManageLeaves = isAdmin || (user.permissions || []).includes('manage_leaves');
+
+    // 1. Scan employee contracts (excluding manager if regular user)
+    if (canManageEmployees) {
+      employees.filter(emp => isAdmin || !isManagerEmployee(emp)).forEach(emp => {
+        emp.contracts?.forEach(contract => {
+          if (contract.endDate) {
+            const end = new Date(contract.endDate);
+            const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+            const baseZero = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+            
+            const diffTime = endZero.getTime() - baseZero.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays >= 0 && diffDays <= 30) {
+              list.push({
+                id: `contract-warn-${contract.id}`,
+                type: 'contract_expire',
+                title: 'اقتراب انتهاء عقد عمل',
+                description: `عقد الموظف (${emp.fullName}) ينتهي خلال ${diffDays} يوم في ${contract.endDate}`,
+                date: contract.endDate,
+                severity: diffDays <= 7 ? 'high' : 'medium',
+                employeeId: emp.id,
+                linkMenu: 'employees'
+              });
+            } else if (diffDays < 0) {
+              list.push({
+                id: `contract-exp-${contract.id}`,
+                type: 'contract_expired',
+                title: 'عقد عمل منتهي الصلاحية',
+                description: `عقد الموظف (${emp.fullName}) انتهى في تاريخ ${contract.endDate}`,
+                date: contract.endDate,
+                severity: 'high',
+                employeeId: emp.id,
+                linkMenu: 'employees'
+              });
+            }
+          }
+        });
+      });
+    }
+
+    // 2. Scan leaves
+    if (canManageLeaves) {
+      leaves.forEach(leave => {
+        const start = new Date(leave.startDate);
+        const end = new Date(leave.endDate);
+        
+        const startZero = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+        const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+        const baseZero = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+        const todayTime = baseZero.getTime();
+        const startTime = startZero.getTime();
+        const endTime = endZero.getTime();
+
+        if (leave.status === 'Approved') {
+          if (todayTime >= startTime && todayTime <= endTime) {
+            list.push({
+              id: `leave-active-${leave.id}`,
+              type: 'leave_active',
+              title: 'موظف في إجازة حالياً',
+              description: `الموظف (${leave.employeeName}) في إجازة حالياً (${leave.type}) حتى ${leave.endDate}`,
+              date: leave.endDate,
+              severity: 'info',
+              linkMenu: 'leaves'
+            });
+          } else if (startTime > todayTime) {
+            const diffDays = Math.ceil((startTime - todayTime) / (1000 * 60 * 60 * 24));
+            if (diffDays <= 7) {
+              list.push({
+                id: `leave-upcoming-${leave.id}`,
+                type: 'leave_upcoming',
+                title: 'إجازة تبدأ قريباً',
+                description: `تبدأ إجازة الموظف (${leave.employeeName}) خلال ${diffDays} يوم في ${leave.startDate}`,
+                date: leave.startDate,
+                severity: 'info',
+                linkMenu: 'leaves'
+              });
+            }
+          }
+        } else if (leave.status === 'Pending') {
+          list.push({
+            id: `leave-pending-${leave.id}`,
+            type: 'leave_pending',
+            title: 'طلب إجازة قيد الانتظار',
+            description: `طلب (${leave.type}) للموظف (${leave.employeeName}) معلق وبحاجة للمراجعة`,
+            date: leave.startDate,
+            severity: 'medium',
+            linkMenu: 'leaves'
+          });
+        }
+      });
+    }
+
+    // 3. Scan employee official documents expiration (visa, work permit)
+    if (canManageEmployees) {
+      employees.filter(emp => isAdmin || !isManagerEmployee(emp)).forEach(emp => {
+        const checkDoc = (docTitle: string, expiryStr?: string) => {
+          if (!expiryStr) return;
+          const exp = new Date(expiryStr);
+          if (isNaN(exp.getTime())) return;
+          const expZero = new Date(exp.getFullYear(), exp.getMonth(), exp.getDate());
           const baseZero = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
-          
-          const diffTime = endZero.getTime() - baseZero.getTime();
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          const diffDays = Math.ceil((expZero.getTime() - baseZero.getTime()) / (1000 * 60 * 60 * 24));
 
           if (diffDays >= 0 && diffDays <= 30) {
             list.push({
-              id: `contract-warn-${contract.id}`,
-              type: 'contract_expire',
-              title: 'اقتراب انتهاء عقد عمل',
-              description: `عقد الموظف (${emp.fullName}) ينتهي خلال ${diffDays} يوم في ${contract.endDate}`,
-              date: contract.endDate,
+              id: `doc-warn-${emp.id}-${docTitle}`,
+              type: 'doc_expire',
+              title: `اقتراب انتهاء ${docTitle}`,
+              description: `${docTitle} للموظف (${emp.fullName}) ينتهي خلال ${diffDays} يوم في ${expiryStr}`,
+              date: expiryStr,
               severity: diffDays <= 7 ? 'high' : 'medium',
               employeeId: emp.id,
               linkMenu: 'employees'
             });
           } else if (diffDays < 0) {
             list.push({
-              id: `contract-exp-${contract.id}`,
-              type: 'contract_expired',
-              title: 'عقد عمل منتهي الصلاحية',
-              description: `عقد الموظف (${emp.fullName}) انتهى في تاريخ ${contract.endDate}`,
-              date: contract.endDate,
+              id: `doc-exp-${emp.id}-${docTitle}`,
+              type: 'doc_expired',
+              title: `${docTitle} منتهي الصلاحية`,
+              description: `${docTitle} للموظف (${emp.fullName}) انتهى في تاريخ ${expiryStr}`,
+              date: expiryStr,
               severity: 'high',
               employeeId: emp.id,
               linkMenu: 'employees'
             });
           }
-        }
+        };
+
+        checkDoc('التأشيرة', emp.visaExpiry);
+        checkDoc('تصريح العمل', emp.permitExpiry);
       });
-    });
-
-    // 2. Scan leaves
-    leaves.forEach(leave => {
-      const start = new Date(leave.startDate);
-      const end = new Date(leave.endDate);
-      
-      const startZero = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-      const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-      const baseZero = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
-
-      const todayTime = baseZero.getTime();
-      const startTime = startZero.getTime();
-      const endTime = endZero.getTime();
-
-      if (leave.status === 'Approved') {
-        if (todayTime >= startTime && todayTime <= endTime) {
-          list.push({
-            id: `leave-active-${leave.id}`,
-            type: 'leave_active',
-            title: 'موظف في إجازة حالياً',
-            description: `الموظف (${leave.employeeName}) في إجازة حالياً (${leave.type}) حتى ${leave.endDate}`,
-            date: leave.endDate,
-            severity: 'info',
-            linkMenu: 'leaves'
-          });
-        } else if (startTime > todayTime) {
-          const diffDays = Math.ceil((startTime - todayTime) / (1000 * 60 * 60 * 24));
-          if (diffDays <= 7) {
-            list.push({
-              id: `leave-upcoming-${leave.id}`,
-              type: 'leave_upcoming',
-              title: 'إجازة تبدأ قريباً',
-              description: `تبدأ إجازة الموظف (${leave.employeeName}) خلال ${diffDays} يوم في ${leave.startDate}`,
-              date: leave.startDate,
-              severity: 'info',
-              linkMenu: 'leaves'
-            });
-          }
-        }
-      } else if (leave.status === 'Pending' && ['admin', 'accountant'].includes(user.role)) {
-        list.push({
-          id: `leave-pending-${leave.id}`,
-          type: 'leave_pending',
-          title: 'طلب إجازة قيد الانتظار',
-          description: `طلب (${leave.type}) للموظف (${leave.employeeName}) معلق وبحاجة للمراجعة`,
-          date: leave.startDate,
-          severity: 'medium',
-          linkMenu: 'leaves'
-        });
-      }
-    });
+    }
 
     return list.filter(item => !dismissedIds.includes(item.id));
   })();
 
   return (
-    <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 flex items-center justify-between px-8" dir="rtl">
+    <>
+      <header className="h-[76px] bg-white/90 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 flex items-center justify-between px-8 shadow-sm" dir="rtl">
       <div className="flex items-center gap-4 flex-1">
         {user.role !== 'employee' && (
           <div className="relative w-full max-w-md">
@@ -214,6 +277,46 @@ export default function Topbar({
           <span className="mx-2">|</span>
           {time.toLocaleTimeString('ar-LY')}
         </div>
+
+        {/* Ethernet LAN Server Status Badge (Only for Admin and Developer) */}
+        {isDevOrAdmin && (
+          <button
+            type="button"
+            onClick={() => setShowEthernetModal(true)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-xs cursor-pointer ${
+              serverRole === 'host'
+                ? 'bg-emerald-50/90 text-emerald-800 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300'
+                : 'bg-indigo-50/90 text-indigo-800 border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300'
+            }`}
+            title="إعدادات كابل الإيثرنت والسيرفر السلكي المباشر"
+          >
+            <div className="relative flex items-center justify-center">
+              <Cable size={16} className={serverRole === 'host' ? 'text-emerald-600' : 'text-indigo-600'} />
+              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            </div>
+            <div className="flex flex-col text-right leading-tight hidden sm:flex">
+              <span className="text-[10px] text-slate-500 font-medium">
+                {serverRole === 'host' ? 'سيرفر الإيثرنت السلكي:' : 'متصل كعميل:'}
+              </span>
+              <span className="font-mono text-[11px] font-bold text-slate-800" dir="ltr">
+                {ethernetIp}:{serverPort}
+              </span>
+            </div>
+          </button>
+        )}
+
+        {/* زر التحديث السريع عبر GitHub */}
+        {isDevOrAdmin && (
+          <button
+            type="button"
+            onClick={() => setShowGitHubModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer hover:shadow-sm"
+            title="فحص وسحب التحديثات من مستودع GitHub بنقرة زر"
+          >
+            <GitBranch size={15} className="text-blue-400" />
+            <span className="hidden sm:inline">تحديث من GitHub</span>
+          </button>
+        )}
 
         {/* Real-time Alerts Dropdown Container */}
         <div className="relative" ref={dropdownRef}>
@@ -240,10 +343,10 @@ export default function Topbar({
                 {generatedNotifications.length > 0 && (
                   <button 
                     onClick={() => {
-                      setDismissedIds([...dismissedIds, ...generatedNotifications.map(n => n.id)]);
-                      toast('تم تعيين جميع التنبيهات كمقروءة');
+                      setDismissedIds(prev => Array.from(new Set([...prev, ...generatedNotifications.map(n => n.id)])));
+                      toast('تم تعيين جميع التنبيهات كمقروءة بنجاح', 'success');
                     }}
-                    className="text-xs text-blue-600 hover:text-blue-800 font-semibold transition-colors"
+                    className="text-xs text-blue-600 hover:text-blue-800 font-semibold transition-colors cursor-pointer"
                   >
                     تحديد الكل كمقروء
                   </button>
@@ -281,10 +384,10 @@ export default function Topbar({
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
-                        setDismissedIds([...dismissedIds, notif.id]);
-                        toast('تم مسح التنبيه');
+                        setDismissedIds(prev => Array.from(new Set([...prev, notif.id])));
+                        toast('تم إخفاء التنبيه بنجاح', 'info');
                       }}
-                      className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 self-center opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                      className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 self-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer"
                       title="تجاهل"
                     >
                       <X size={14} />
@@ -313,5 +416,16 @@ export default function Topbar({
         </div>
       </div>
     </header>
+
+    <EthernetServerModal
+      isOpen={showEthernetModal}
+      onClose={() => setShowEthernetModal(false)}
+    />
+
+    <GitHubUpdateModal
+      isOpen={showGitHubModal}
+      onClose={() => setShowGitHubModal(false)}
+    />
+  </>
   );
 }

@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "HR System - مركز البنيان لإدارة الموارد البشرية",
+  "description": "نظام شامل ومتكامل لإدارة الموارد البشرية والموظفين والرواتب والحضور والإجازات مع التحديث المباشر والنسخ الاحتياطي التلقائي",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
