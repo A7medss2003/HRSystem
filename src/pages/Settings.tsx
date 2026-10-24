@@ -260,68 +260,45 @@ export default function Settings({ user }: { user?: { username: string, role?: s
         </button>
       </div>
 
-      {/* Tab 1: Updates & In-Place Upgrades */}
+      {/* Tab 1: Updates */}
       {activeTab === 'updates' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          {/* In-Place Upgrade Status & Quick Overview Card */}
-          <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-sm border border-slate-800">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30">
-                    ترقية مباشرة في نفس المسار (In-Place Upgrade)
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1">
-                    <CheckCircle2 size={12} />
-                    حفظ كامل لقواعد البيانات
-                  </span>
-                </div>
-                <h3 className="text-xl font-bold flex items-center gap-2">
-                  <RefreshCw className="text-blue-400" size={22} />
-                  تحديث المنظومة
-                </h3>
-                <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
-                  يمكنك تحديث المنظومة عبر الإنترنت أو الفلاش ميموري (USB) بكل سهولة، مع الحفاظ التام على جميع بياناتك وسجلاتك.
-                </p>
+        <div className="space-y-4 animate-in fade-in duration-200">
+          {/* Quick Header with USB Actions */}
+          <div className="bg-white p-4.5 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center shrink-0">
+                <RefreshCw size={20} />
               </div>
-
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowPatchGuide(true)}
-                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer border border-white/15"
-                >
-                  <Usb size={15} />
-                  دليل الترقية عبر فلاشة (USB)
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCheckUpdates}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-md shadow-blue-900/40"
-                >
-                  <RefreshCw size={15} />
-                  فحص تحديثات أوفلاين (USB)
-                </button>
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <span>تحديث المنظومة</span>
+                  <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
+                    v{APP_VERSION}
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  فحص وتثبيت التحديثات عبر الإنترنت أو الفلاش ميموري (USB)
+                </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-5 border-t border-white/10 text-xs">
-              <div>
-                <span className="text-slate-400 block text-[11px]">الإصدار المثبت:</span>
-                <span className="font-mono font-bold text-white text-sm">v{APP_VERSION}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block text-[11px]">تاريخ الإصدار:</span>
-                <span className="font-bold text-slate-200">{APP_RELEASE_DATE}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block text-[11px]">نوع البناء:</span>
-                <span className="font-bold text-slate-200">{APP_BUILD_TYPE}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block text-[11px]">معرف الحزمة:</span>
-                <span className="font-mono text-slate-300 text-[11px]">com.hrsystem.app</span>
-              </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowPatchGuide(true)}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer border border-slate-200"
+              >
+                <Usb size={14} />
+                دليل الفلاشة
+              </button>
+              <button
+                type="button"
+                onClick={handleCheckUpdates}
+                className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <RefreshCw size={14} />
+                فحص أوفلاين (USB)
+              </button>
             </div>
           </div>
 
