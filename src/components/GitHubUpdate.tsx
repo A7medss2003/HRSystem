@@ -578,7 +578,7 @@ export const GitHubUpdate: React.FC<GitHubUpdateProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={() => window.location.reload()}
+                  onClick={() => githubUpdateService.reloadApp()}
                   className="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors"
                 >
                   <RotateCcw size={13} />

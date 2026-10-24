@@ -251,7 +251,18 @@ function startLanServer(port = 3000) {
       }
     });
 
-    const distPath = path.join(__dirname, 'dist');
+function getAppDistPath() {
+  try {
+    const updatedDist = path.join(app.getPath('userData'), 'app_update', 'dist');
+    const updatedIndex = path.join(updatedDist, 'index.html');
+    if (fs.existsSync(updatedIndex)) {
+      return updatedDist;
+    }
+  } catch (e) {}
+  return path.join(__dirname, 'dist');
+}
+
+    const distPath = getAppDistPath();
     if (fs.existsSync(distPath)) {
       serverApp.use(express.static(distPath));
       serverApp.get('*', (req, res) => {
@@ -336,7 +347,8 @@ function createWindow() {
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173');
   } else {
-    mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+    const distPath = getAppDistPath();
+    mainWindow.loadFile(path.join(distPath, 'index.html'));
   }
 }
 
@@ -515,6 +527,32 @@ ipcMain.handle('github:get-version', () => {
     return getStoredVersion();
   } catch (err) {
     return null;
+  }
+});
+
+ipcMain.handle('app:reload-window', () => {
+  try {
+    if (mainWindow) {
+      if (process.env.NODE_ENV === 'development') {
+        mainWindow.reload();
+      } else {
+        const distPath = getAppDistPath();
+        mainWindow.loadFile(path.join(distPath, 'index.html'));
+      }
+      return { success: true };
+    }
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+  return { success: false };
+});
+
+ipcMain.handle('app:relaunch', () => {
+  try {
+    app.relaunch();
+    app.exit(0);
+  } catch (err) {
+    return { success: false, error: err.message };
   }
 });
 

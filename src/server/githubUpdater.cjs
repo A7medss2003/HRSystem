@@ -2,28 +2,41 @@
  * GitHub In-App Updater Module
  * Enables checking and applying system updates directly from a GitHub repository
  * Supports public and private repositories (via GitHub Personal Access Token)
+ * Automatically downloads and deploys dist/ files to userData/app_update/dist for installed desktop apps.
  */
 
 const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-
 const os = require('os');
 
-function getVersionFilePath() {
+function getElectronApp() {
   try {
     const electron = require('electron');
-    const electronApp = electron.app || (electron.remote && electron.remote.app);
-    if (electronApp && typeof electronApp.getPath === 'function') {
-      return path.join(electronApp.getPath('userData'), 'github-version.json');
-    }
-  } catch (e) {}
+    return electron.app || (electron.remote && electron.remote.app) || null;
+  } catch (e) {
+    return null;
+  }
+}
 
-  // Fallback for packaged app or standard environment
+function getUserDataDir() {
+  const electronApp = getElectronApp();
+  if (electronApp && typeof electronApp.getPath === 'function') {
+    return electronApp.getPath('userData');
+  }
+
+  // Standard fallback
   const baseDir = process.env.APPDATA || 
                   (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : '/var/local');
-  const targetDir = path.join(baseDir, 'hr-system');
-  return path.join(targetDir, 'github-version.json');
+  return path.join(baseDir, 'hr-system');
+}
+
+function getVersionFilePath() {
+  return path.join(getUserDataDir(), 'github-version.json');
+}
+
+function getUpdateDir() {
+  return path.join(getUserDataDir(), 'app_update');
 }
 
 function parseGitHubRepo(input) {
@@ -72,6 +85,42 @@ function saveStoredVersion(data) {
   } catch (e) {
     console.warn('Failed to save github-version.json:', e.message);
   }
+}
+
+async function downloadGitHubFile({ owner, repo, sha, filePath, targetPath, token, commitSha }) {
+  const headers = {
+    'User-Agent': 'HR-System-InApp-Updater',
+    'Accept': 'application/vnd.github.v3.raw'
+  };
+  if (token && token.trim()) {
+    headers['Authorization'] = `token ${token.trim()}`;
+  }
+
+  // 1. Try Git Blobs API (Works for public & private repositories)
+  const blobUrl = `https://api.github.com/repos/${owner}/${repo}/git/blobs/${sha}`;
+
+  try {
+    const res = await fetch(blobUrl, { headers });
+    if (res.ok) {
+      const arrayBuf = await res.arrayBuffer();
+      fs.writeFileSync(targetPath, Buffer.from(arrayBuf));
+      return true;
+    }
+  } catch (e) {}
+
+  // 2. Fallback to raw.githubusercontent.com
+  const rawHeaders = { 'User-Agent': 'HR-System-InApp-Updater' };
+  if (token && token.trim()) {
+    rawHeaders['Authorization'] = `token ${token.trim()}`;
+  }
+  const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${commitSha}/${filePath}`;
+  const rawRes = await fetch(rawUrl, { headers: rawHeaders });
+  if (!rawRes.ok) {
+    throw new Error(`Failed to download ${filePath} (${rawRes.status})`);
+  }
+  const rawBuf = await rawRes.arrayBuffer();
+  fs.writeFileSync(targetPath, Buffer.from(rawBuf));
+  return true;
 }
 
 async function checkGitHubUpdate({ repo, branch = 'main', token = '', currentCommit = '' }) {
@@ -186,7 +235,7 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
   const isGitRepo = fs.existsSync(path.join(rootDir, '.git'));
 
   if (isGitRepo) {
-    addLog('تم الكشف عن مستودع Git محلي، جاري سحب التعديلات (git pull)...');
+    addLog('تم الكشف عن بيئة برمجية محلية، جاري سحب التعديلات (git pull)...');
 
     const authRemote = token 
       ? `https://${encodeURIComponent(token.trim())}@github.com/${owner}/${repoName}.git`
@@ -211,13 +260,80 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
         addLog('تم سحب التعديلات بنجاح من Git!');
       }
     } catch (e) {
-      addLog('جاري اعتماد التحديث عبر التحديث المباشر...');
+      addLog('جاري اعتماد التحديث المباشر للملفات...');
     }
-  } else {
-    addLog('المنظومة تعمل كحزمة برمجية مستقلة، جاري تطبيق التحديث المباشر...');
   }
 
-  // 3. Record new version info locally
+  // 3. Download & apply dist/ files for installed desktop application
+  addLog('جاري فحص شجرة الملفات المعدلة على GitHub...');
+  const treeUrl = `https://api.github.com/repos/${owner}/${repoName}/git/trees/${latest.sha}?recursive=1`;
+  const treeHeaders = {
+    'Accept': 'application/vnd.github.v3+json',
+    'User-Agent': 'HR-System-InApp-Updater'
+  };
+  if (token && token.trim()) {
+    treeHeaders['Authorization'] = `token ${token.trim()}`;
+  }
+
+  let distFilesUpdated = 0;
+  try {
+    const treeRes = await fetch(treeUrl, { headers: treeHeaders });
+    if (treeRes.ok) {
+      const treeData = await treeRes.json();
+      if (treeData && Array.isArray(treeData.tree)) {
+        // Collect all compiled frontend files under dist/
+        const distBlobs = treeData.tree.filter(
+          item => item.type === 'blob' && item.path.startsWith('dist/')
+        );
+
+        if (distBlobs.length > 0) {
+          addLog(`تم العثور على ${distBlobs.length} ملف للواجهة (dist/)، جاري التحميل والتثبيت المباشر...`);
+          const updateBase = getUpdateDir();
+          const targetDist = path.join(updateBase, 'dist');
+          if (!fs.existsSync(targetDist)) {
+            fs.mkdirSync(targetDist, { recursive: true });
+          }
+
+          for (let i = 0; i < distBlobs.length; i++) {
+            const blob = distBlobs[i];
+            const destPath = path.join(updateBase, blob.path);
+            const parentDir = path.dirname(destPath);
+            if (!fs.existsSync(parentDir)) {
+              fs.mkdirSync(parentDir, { recursive: true });
+            }
+
+            try {
+              await downloadGitHubFile({
+                owner,
+                repo: repoName,
+                sha: blob.sha,
+                filePath: blob.path,
+                targetPath: destPath,
+                token,
+                commitSha: latest.sha
+              });
+              distFilesUpdated++;
+
+              if ((i + 1) % 5 === 0 || (i + 1) === distBlobs.length) {
+                addLog(`تنزيل الملفات: (${i + 1}/${distBlobs.length})...`);
+              }
+            } catch (dlErr) {
+              console.warn(`Error downloading ${blob.path}:`, dlErr.message);
+            }
+          }
+
+          addLog(`✓ تم تحميل وتحديث كافة ملفات الواجهة بنجاح (${distFilesUpdated} ملف)!`);
+        } else {
+          addLog('تنبيه: تم جلب التحديث ولكن لم يُعثر على مجلد dist/ في مستودع GitHub.');
+          addLog('نصيحة: تأكد من تشغيل "npm run build" ثم رفع مجلد dist إلى GitHub لتظهر التعديلات تلقائياً للمستخدمين.');
+        }
+      }
+    }
+  } catch (treeErr) {
+    addLog(`ملاحظة أثناء فحص الشجرة: ${treeErr.message}`);
+  }
+
+  // 4. Record new version info locally
   saveStoredVersion({
     commitSha: latest.sha,
     shortSha: latest.shortSha,
@@ -225,6 +341,7 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
     author: latest.author,
     branch: targetBranch,
     repo: `${owner}/${repoName}`,
+    distFilesUpdated,
     updatedAt: new Date().toISOString()
   });
 
@@ -234,6 +351,7 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
   return {
     success: true,
     latestCommit: latest,
+    distFilesUpdated,
     logs,
     message: `تم تحديث المنظومة بنجاح إلى النسخة (${latest.shortSha})!`
   };
@@ -241,6 +359,8 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
 
 module.exports = {
   parseGitHubRepo,
+  getVersionFilePath,
+  getUpdateDir,
   getStoredVersion,
   saveStoredVersion,
   checkGitHubUpdate,

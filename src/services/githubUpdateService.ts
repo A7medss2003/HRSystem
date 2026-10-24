@@ -51,6 +51,21 @@ export { DEFAULT_REPO_URL, DEFAULT_BRANCH };
 
 const STORAGE_KEY = 'hr_github_update_config';
 
+function getIpcRenderer(): any | null {
+  if (typeof window === 'undefined') return null;
+  if ((window as any).electron?.ipcRenderer) return (window as any).electron.ipcRenderer;
+  try {
+    if (typeof (window as any).require === 'function') {
+      const electron = (window as any).require('electron');
+      if (electron?.ipcRenderer) {
+        (window as any).electron = { ipcRenderer: electron.ipcRenderer };
+        return electron.ipcRenderer;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
 export class GitHubUpdateService {
   /**
    * جلب الإعدادات المحفوظة لمستودع التحديث (الافتراضي هو رابط المنظومة الأساسي مع إمكانية التغيير)
@@ -133,11 +148,11 @@ export class GitHubUpdateService {
     }
 
     // 1. Try Electron IPC if running inside Desktop Electron
-    if (typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
+    const ipc = getIpcRenderer();
+    if (ipc) {
       try {
-        const res = await (window as any).electron.ipcRenderer.invoke('github:check-update', config);
+        const res = await ipc.invoke('github:check-update', config);
         if (res && res.success) return res;
-        // If error is an actual GitHub check error (not missing module/runtime issue), return it
         if (res && res.error && !res.error.includes('Cannot find module')) {
           return res;
         }
@@ -244,9 +259,10 @@ export class GitHubUpdateService {
     const config = { ...this.getConfig(), ...customConfig };
 
     // 1. Try Electron IPC
-    if (typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
+    const ipc = getIpcRenderer();
+    if (ipc) {
       try {
-        const res = await (window as any).electron.ipcRenderer.invoke('github:apply-update', config);
+        const res = await ipc.invoke('github:apply-update', config);
         if (res && res.success) {
           if (res.latestCommit?.sha) {
             localStorage.setItem('hr_installed_commit_sha', res.latestCommit.sha);
@@ -304,6 +320,38 @@ export class GitHubUpdateService {
       ],
       message: `تم تحديث المنظومة بنجاح إلى النسخة (${latest.shortSha})!`
     };
+  }
+
+  /**
+   * إعادة تحميل نافذة المنظومة لتشغيل الملفات المحدثة فوراً
+   */
+  public async reloadApp(): Promise<void> {
+    const ipc = getIpcRenderer();
+    if (ipc) {
+      try {
+        await ipc.invoke('app:reload-window');
+        return;
+      } catch (e) {}
+    }
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
+  }
+
+  /**
+   * إعادة تشغيل المنظومة بالكامل
+   */
+  public async relaunchApp(): Promise<void> {
+    const ipc = getIpcRenderer();
+    if (ipc) {
+      try {
+        await ipc.invoke('app:relaunch');
+        return;
+      } catch (e) {}
+    }
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
   }
 }
 
