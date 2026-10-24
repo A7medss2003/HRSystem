@@ -61,7 +61,10 @@
     },
     "files": [
       "dist/**/*",
+      "src/server/**/*",
       "electron-main.cjs",
+      "githubUpdater.cjs",
+      "scannerDriver.cjs",
       "package.json",
       "!release/**/*",
       "!HR_Update/**/*",

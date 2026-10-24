@@ -38,8 +38,23 @@ const versionContent = `// Single source of truth for Application Version
 export const APP_VERSION = '${newVersion}';
 export const APP_RELEASE_DATE = '${today}';
 export const APP_BUILD_TYPE = 'تحديث تراكمي في نفس المسار (In-Place Upgrade)';
+export const DEFAULT_REPO_URL = 'https://github.com/smywahmd1/hr-system';
+export const DEFAULT_BRANCH = 'main';
 `;
 fs.writeFileSync(versionTsPath, versionContent, 'utf8');
+
+// Ensure root copies of backend modules are synced before electron packaging
+const srcUpdater = path.join(__dirname, '..', 'src', 'server', 'githubUpdater.cjs');
+const dstUpdater = path.join(__dirname, '..', 'githubUpdater.cjs');
+if (fs.existsSync(srcUpdater)) {
+  fs.copyFileSync(srcUpdater, dstUpdater);
+}
+
+const srcScanner = path.join(__dirname, '..', 'src', 'server', 'scannerDriver.cjs');
+const dstScanner = path.join(__dirname, '..', 'scannerDriver.cjs');
+if (fs.existsSync(srcScanner)) {
+  fs.copyFileSync(srcScanner, dstScanner);
+}
 
 console.log(`\n✓ تم ترقية رقم الإصدار من ${currentVersion} إلى: ${newVersion}`);
 console.log('✓ جاري بناء ملفات الواجهة (Vite Build)...');

@@ -5,7 +5,6 @@ import { toast } from '../components/Toast';
 import { validatePassword } from '../lib/validators';
 import FieldRequirementsModal from '../components/FieldRequirementsModal';
 import EthernetServerModal from '../components/EthernetServerModal';
-import GitHubUpdateModal from '../components/GitHubUpdateModal';
 import GitHubUpdate from '../components/GitHubUpdate';
 import { getStoredServerConfig, fetchNetworkInterfaces, saveServerConfig } from '../lib/serverSync';
 import { executeLiveAutoBackup } from '../lib/autoBackup';
@@ -18,7 +17,21 @@ export default function Settings({ user }: { user?: { username: string, role?: s
   const [showFieldRequirementsModal, setShowFieldRequirementsModal] = React.useState(false);
   const [showPatchGuide, setShowPatchGuide] = React.useState(false);
   const [showEthernetModal, setShowEthernetModal] = React.useState(false);
-  const [showGitHubModal, setShowGitHubModal] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState<'updates' | 'backup' | 'general'>(() => {
+    try {
+      const saved = localStorage.getItem('hr_settings_active_tab');
+      if (saved === 'updates' || saved === 'backup' || saved === 'general') return saved;
+    } catch {}
+    return 'updates';
+  });
+
+  const handleTabChange = (tab: 'updates' | 'backup' | 'general') => {
+    setActiveTab(tab);
+    try {
+      localStorage.setItem('hr_settings_active_tab', tab);
+    } catch {}
+  };
+
   const [serverIp, setServerIp] = React.useState('192.168.1.1');
   const [serverPort, setServerPort] = React.useState('3000');
   const [copiedEthLink, setCopiedEthLink] = React.useState(false);
@@ -194,19 +207,139 @@ export default function Settings({ user }: { user?: { username: string, role?: s
             <SettingsIcon className="text-blue-600" />
             الإعدادات
           </h2>
-          <p className="text-slate-500 mt-1 text-sm">إدارة إعدادات حسابك وتفضيلات النظام</p>
+          <p className="text-slate-500 mt-1 text-sm">إدارة تحديثات النظام، النسخ الاحتياطي، والتفضيلات العامة</p>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-slate-400">إصدار المنظومة:</span>
+          <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg">
+            v{APP_VERSION}
+          </span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Organized Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => handleTabChange('updates')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'updates'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+          }`}
+        >
+          <RefreshCw size={15} className={activeTab === 'updates' ? 'text-blue-400' : 'text-slate-500'} />
+          <span>تحديث المنظومة</span>
+        </button>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                <HardDrive size={20} className="text-blue-600" />
-                النسخ الاحتياطي التلقائي والمزدوج
-              </h3>
+        <button
+          type="button"
+          onClick={() => handleTabChange('backup')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'backup'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+          }`}
+        >
+          <HardDrive size={15} className={activeTab === 'backup' ? 'text-blue-400' : 'text-slate-500'} />
+          <span>النسخ الاحتياطي والشبكة السلكية</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange('general')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'general'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+          }`}
+        >
+          <SlidersHorizontal size={15} className={activeTab === 'general' ? 'text-blue-400' : 'text-slate-500'} />
+          <span>الإعدادات العامة والأمان</span>
+        </button>
+      </div>
+
+      {/* Tab 1: Updates & In-Place Upgrades */}
+      {activeTab === 'updates' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* In-Place Upgrade Status & Quick Overview Card */}
+          <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-sm border border-slate-800">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                    ترقية مباشرة في نفس المسار (In-Place Upgrade)
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1">
+                    <CheckCircle2 size={12} />
+                    حفظ كامل لقواعد البيانات
+                  </span>
+                </div>
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <RefreshCw className="text-blue-400" size={22} />
+                  تحديث المنظومة
+                </h3>
+                <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                  يمكنك تحديث المنظومة عبر الإنترنت أو الفلاش ميموري (USB) بكل سهولة، مع الحفاظ التام على جميع بياناتك وسجلاتك.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowPatchGuide(true)}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer border border-white/15"
+                >
+                  <Usb size={15} />
+                  دليل الترقية عبر فلاشة (USB)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCheckUpdates}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-md shadow-blue-900/40"
+                >
+                  <RefreshCw size={15} />
+                  فحص تحديثات أوفلاين (USB)
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-5 border-t border-white/10 text-xs">
+              <div>
+                <span className="text-slate-400 block text-[11px]">الإصدار المثبت:</span>
+                <span className="font-mono font-bold text-white text-sm">v{APP_VERSION}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">تاريخ الإصدار:</span>
+                <span className="font-bold text-slate-200">{APP_RELEASE_DATE}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">نوع البناء:</span>
+                <span className="font-bold text-slate-200">{APP_BUILD_TYPE}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">معرف الحزمة:</span>
+                <span className="font-mono text-slate-300 text-[11px]">com.hrsystem.app</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Integrated GitHub Update Engine */}
+          <GitHubUpdate />
+        </div>
+      )}
+
+      {/* Tab 2: Backup & Ethernet LAN Server */}
+      {activeTab === 'backup' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                  <HardDrive size={20} className="text-blue-600" />
+                  النسخ الاحتياطي التلقائي والمزدوج
+                </h3>
               <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
                 <CheckCircle2 size={13} />
                 تخزين متزامن فوري دائم
@@ -295,75 +428,6 @@ export default function Settings({ user }: { user?: { username: string, role?: s
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Updates Management Card */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                <Laptop size={20} className="text-blue-600" />
-                إدارة التحديثات والترقية التشطيبية
-              </h3>
-              <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
-                <CheckCircle2 size={13} />
-                تحديث تراكمي في نفس المسار
-              </span>
-            </div>
-
-            <p className="text-xs text-slate-500 leading-relaxed mb-4">
-              جميع النسخ المستخرجة من المنظومة مُعدة تلقائياً لتعمل كترقية واستبدال مباشر للنسخة السابقة (In-Place Upgrade)؛ يتم تحديث ملفات النظام في نفس المسار مع الحفاظ التام على الموظفين وقواعد البيانات دون إنشاء أي نسخة إضافية أو تكرار الأيقونات.
-            </p>
-
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2 mb-4 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">رقم الإصدار الحالي:</span>
-                <span className="font-mono font-bold text-blue-700 text-sm">{APP_VERSION}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">تاريخ الإصدار:</span>
-                <span className="font-mono text-slate-700">{APP_RELEASE_DATE}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">طريقة الترقية:</span>
-                <span className="text-slate-700 font-semibold">{APP_BUILD_TYPE}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => setShowGitHubModal(true)}
-              className="w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-slate-900 to-indigo-950 hover:from-black hover:to-indigo-900 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
-            >
-              <GitBranch size={15} className="text-blue-400" />
-              <span>تحديث المنظومة عبر GitHub</span>
-            </button>
-            <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={() => setShowPatchGuide(true)}
-                className="w-full sm:w-auto px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <HelpCircle size={14} className="text-blue-600" />
-                كيف يعمل التحديث بالفلاش؟
-              </button>
-              <button
-                type="button"
-                onClick={handleCheckUpdates}
-                className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-sm shadow-blue-200 cursor-pointer"
-              >
-                <RefreshCw size={14} />
-                فحص فلاشة (USB)
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* GitHub Direct Synchronization & Update Component for Manager */}
-        <div className="md:col-span-2">
-          <GitHubUpdate />
         </div>
 
         {/* Simplified Ethernet LAN Server Inline Card */}
@@ -516,8 +580,12 @@ export default function Settings({ user }: { user?: { username: string, role?: s
             </button>
           </div>
         </div>
+      </div>
+      )}
 
-        
+      {/* Tab 3: General Settings, Notifications, Security */}
+      {activeTab === 'general' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in duration-200">
         {isAdmin && (
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
             <h3 className="text-lg font-semibold text-slate-800 flex items-center justify-between gap-2 mb-4">
@@ -641,6 +709,7 @@ export default function Settings({ user }: { user?: { username: string, role?: s
           </div>
         </div>
       </div>
+      )}
       
       {/* Password Modal */}
       {showPasswordModal && (
@@ -787,12 +856,6 @@ export default function Settings({ user }: { user?: { username: string, role?: s
       <EthernetServerModal
         isOpen={showEthernetModal}
         onClose={() => setShowEthernetModal(false)}
-      />
-
-      {/* GitHub In-App Update Modal */}
-      <GitHubUpdateModal
-        isOpen={showGitHubModal}
-        onClose={() => setShowGitHubModal(false)}
       />
     </div>
   );

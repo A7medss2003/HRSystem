@@ -45,26 +45,50 @@ export interface GitHubApplyResult {
   error?: string;
 }
 
+import { DEFAULT_REPO_URL, DEFAULT_BRANCH } from '../version';
+
+export { DEFAULT_REPO_URL, DEFAULT_BRANCH };
+
 const STORAGE_KEY = 'hr_github_update_config';
 
 export class GitHubUpdateService {
   /**
-   * جلب الإعدادات المحفوظة لمستودع GitHub
+   * جلب الإعدادات المحفوظة لمستودع التحديث (الافتراضي هو رابط المنظومة الأساسي مع إمكانية التغيير)
    */
   public getConfig(): GitHubUpdateConfig {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return {
+          repo: (parsed.repo !== undefined && parsed.repo !== null && parsed.repo.trim() !== '') ? parsed.repo.trim() : DEFAULT_REPO_URL,
+          branch: parsed.branch || DEFAULT_BRANCH,
+          token: parsed.token || '',
+          autoCheck: !!parsed.autoCheck
+        };
       }
     } catch (e) {}
 
     return {
-      repo: '',
-      branch: 'main',
+      repo: DEFAULT_REPO_URL,
+      branch: DEFAULT_BRANCH,
       token: '',
       autoCheck: false
     };
+  }
+
+  /**
+   * استعادة الرابط الافتراضي الأساسي للمنظومة
+   */
+  public resetToDefault(): GitHubUpdateConfig {
+    const defaultConfig: GitHubUpdateConfig = {
+      repo: DEFAULT_REPO_URL,
+      branch: DEFAULT_BRANCH,
+      token: '',
+      autoCheck: false
+    };
+    this.saveConfig(defaultConfig);
+    return defaultConfig;
   }
 
   /**
@@ -112,7 +136,11 @@ export class GitHubUpdateService {
     if (typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
       try {
         const res = await (window as any).electron.ipcRenderer.invoke('github:check-update', config);
-        if (res) return res;
+        if (res && res.success) return res;
+        // If error is an actual GitHub check error (not missing module/runtime issue), return it
+        if (res && res.error && !res.error.includes('Cannot find module')) {
+          return res;
+        }
       } catch (e) {}
     }
 
@@ -125,7 +153,10 @@ export class GitHubUpdateService {
       });
       if (res.ok) {
         const data = await res.json();
-        return data;
+        if (data && data.success) return data;
+        if (data && data.error && !data.error.includes('Cannot find module')) {
+          return data;
+        }
       }
     } catch (e) {}
 
@@ -235,11 +266,16 @@ export class GitHubUpdateService {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.latestCommit?.sha) {
-          localStorage.setItem('hr_installed_commit_sha', data.latestCommit.sha);
-          localStorage.setItem('hr_last_update_date', new Date().toISOString());
+        if (data && data.success) {
+          if (data.latestCommit?.sha) {
+            localStorage.setItem('hr_installed_commit_sha', data.latestCommit.sha);
+            localStorage.setItem('hr_last_update_date', new Date().toISOString());
+          }
+          return data;
         }
-        return data;
+        if (data && data.error && !data.error.includes('Cannot find module')) {
+          return data;
+        }
       }
     } catch (e) {}
 

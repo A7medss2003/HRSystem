@@ -8,7 +8,23 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const VERSION_FILE = path.join(__dirname, '..', '..', 'github-version.json');
+const os = require('os');
+
+function getVersionFilePath() {
+  try {
+    const electron = require('electron');
+    const electronApp = electron.app || (electron.remote && electron.remote.app);
+    if (electronApp && typeof electronApp.getPath === 'function') {
+      return path.join(electronApp.getPath('userData'), 'github-version.json');
+    }
+  } catch (e) {}
+
+  // Fallback for packaged app or standard environment
+  const baseDir = process.env.APPDATA || 
+                  (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : '/var/local');
+  const targetDir = path.join(baseDir, 'hr-system');
+  return path.join(targetDir, 'github-version.json');
+}
 
 function parseGitHubRepo(input) {
   if (!input || typeof input !== 'string') return null;
@@ -31,8 +47,9 @@ function parseGitHubRepo(input) {
 
 function getStoredVersion() {
   try {
-    if (fs.existsSync(VERSION_FILE)) {
-      const data = JSON.parse(fs.readFileSync(VERSION_FILE, 'utf8'));
+    const filePath = getVersionFilePath();
+    if (fs.existsSync(filePath)) {
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       return data;
     }
   } catch (e) {}
@@ -46,7 +63,12 @@ function getStoredVersion() {
 
 function saveStoredVersion(data) {
   try {
-    fs.writeFileSync(VERSION_FILE, JSON.stringify(data, null, 2), 'utf8');
+    const filePath = getVersionFilePath();
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
   } catch (e) {
     console.warn('Failed to save github-version.json:', e.message);
   }

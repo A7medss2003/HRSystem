@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { githubUpdateService, GitHubCheckResult, GitHubApplyResult, GitHubUpdateConfig } from '../services/githubUpdateService';
 import { toast } from './Toast';
-import { APP_VERSION, APP_RELEASE_DATE } from '../version';
+import { APP_VERSION, APP_RELEASE_DATE, DEFAULT_REPO_URL, DEFAULT_BRANCH } from '../version';
 
 interface GitHubUpdateProps {
   className?: string;
@@ -41,8 +41,8 @@ export const GitHubUpdate: React.FC<GitHubUpdateProps> = ({
   onUpdateCompleted,
   compact = false
 }) => {
-  const [repo, setRepo] = useState<string>('');
-  const [branch, setBranch] = useState<string>('main');
+  const [repo, setRepo] = useState<string>(DEFAULT_REPO_URL);
+  const [branch, setBranch] = useState<string>(DEFAULT_BRANCH);
   const [token, setToken] = useState<string>('');
   const [showTokenInput, setShowTokenInput] = useState<boolean>(false);
   const [hasSavedConfig, setHasSavedConfig] = useState<boolean>(false);
@@ -89,13 +89,10 @@ git push -u origin ${branch.trim() || 'main'}`;
   // تحميل الإعدادات المحفوظة عند فتح الواجهة
   useEffect(() => {
     const config = githubUpdateService.getConfig();
-    if (config.repo) {
-      setRepo(config.repo);
-      setHasSavedConfig(true);
-    }
-    if (config.branch) {
-      setBranch(config.branch);
-    }
+    setRepo(config.repo || DEFAULT_REPO_URL);
+    setBranch(config.branch || DEFAULT_BRANCH);
+    setHasSavedConfig(true);
+
     if (config.token) {
       setToken(config.token);
       setShowTokenInput(true);
@@ -117,18 +114,27 @@ git push -u origin ${branch.trim() || 'main'}`;
     }
   }, []);
 
+  const handleResetToDefault = () => {
+    const def = githubUpdateService.resetToDefault();
+    setRepo(def.repo);
+    setBranch(def.branch);
+    setToken('');
+    setShowTokenInput(false);
+    toast('تمت استعادة رابط المستودع الأساسي للمنظومة بنجاح', 'success');
+  };
+
   const handleSaveConfig = () => {
-    if (!repo.trim()) {
-      toast('يرجى إدخال اسم أو رابط مستودع GitHub أولاً', 'warning');
-      return;
-    }
+    const targetRepo = repo.trim() || DEFAULT_REPO_URL;
+    const targetBranch = branch.trim() || DEFAULT_BRANCH;
     githubUpdateService.saveConfig({
-      repo: repo.trim(),
-      branch: branch.trim() || 'main',
+      repo: targetRepo,
+      branch: targetBranch,
       token: token.trim()
     });
+    setRepo(targetRepo);
+    setBranch(targetBranch);
     setHasSavedConfig(true);
-    toast('تم حفظ إعدادات مستودع GitHub بنجاح', 'success');
+    toast('تم حفظ وتثبيت رابط المستودع بنجاح', 'success');
   };
 
   /**
@@ -281,17 +287,17 @@ git push -u origin ${branch.trim() || 'main'}`;
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center shrink-0 backdrop-blur-xs">
-              <GitBranch className="text-blue-400 w-6 h-6" />
+              <RefreshCw className="text-blue-400 w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-lg font-bold">بوابة تحديث المنظومة عبر GitHub</h3>
+                <h3 className="text-lg font-bold">تحديث المنظومة عبر الإنترنت</h3>
                 <span className="text-[11px] bg-blue-500/20 text-blue-200 border border-blue-400/30 px-2.5 py-0.5 rounded-full font-mono">
-                  Manager Direct Sync
+                  Online Update
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-1">
-                اربط مستودعك الخاص أو العام، وتفقد الجديد وقم بتحميل التعديلات بنقرة زر دون فقدان أي بيانات
+                فحص وتحميل أحدث التحديثات مباشرة بنقرة زر مع الحفاظ التام على بياناتك
               </p>
             </div>
           </div>
@@ -299,7 +305,7 @@ git push -u origin ${branch.trim() || 'main'}`;
           <div className="flex items-center gap-2 self-start sm:self-auto">
             <span className="inline-flex items-center gap-1.5 text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full font-bold">
               <ShieldCheck size={14} className="text-emerald-400" />
-              <span>ترقية آمنة في نفس المسار (In-Place)</span>
+              <span>ترقية آمنة في نفس المسار</span>
             </span>
           </div>
         </div>
@@ -313,7 +319,7 @@ git push -u origin ${branch.trim() || 'main'}`;
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
             <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
               <Globe size={18} className="text-blue-600" />
-              <span>إعدادات مستودع GitHub الخاص بالمدير:</span>
+              <span>إعدادات التحديث عبر الإنترنت:</span>
             </div>
             
             <button
@@ -322,33 +328,54 @@ git push -u origin ${branch.trim() || 'main'}`;
               className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
             >
               <Key size={13} className="text-blue-500" />
-              <span>{showTokenInput ? 'إخفاء مفتاح الوصول (Token)' : 'مستودع خاص (Private Repo)؟'}</span>
+              <span>{showTokenInput ? 'إخفاء مفتاح الوصول' : 'مستودع خاص (Private)؟'}</span>
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
             {/* Repo Input */}
             <div className="md:col-span-8 space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700">
-                رابط مستودع GitHub أو اسمه:
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-slate-700">
+                  رابط مستودع التحديث:
+                </label>
+                {repo.trim() === DEFAULT_REPO_URL ? (
+                  <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                    <CheckCircle2 size={11} className="text-emerald-600" />
+                    المستودع الأساسي للمنظومة (الافتراضي)
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResetToDefault}
+                    className="text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <RotateCcw size={11} />
+                    <span>استعادة المستودع الأساسي</span>
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <input
                   type="text"
                   dir="ltr"
                   value={repo}
                   onChange={(e) => setRepo(e.target.value)}
-                  placeholder="https://github.com/username/hr-system أو username/hr-system"
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  placeholder={DEFAULT_REPO_URL}
+                  className={`w-full px-3.5 py-2.5 bg-white border rounded-xl font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                    repo.trim() === DEFAULT_REPO_URL
+                      ? 'border-emerald-300 bg-emerald-50/20'
+                      : 'border-slate-300'
+                  }`}
                 />
-                {repo && (
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
-                    GitHub URL
-                  </span>
-                )}
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                  {repo.trim() === DEFAULT_REPO_URL ? 'الأساسي' : 'مخصص'}
+                </span>
               </div>
               <p className="text-[11px] text-slate-500">
-                يمكنك كتابة الرابط الكامل لمستودعك على GitHub أو اسم المستخدم واسم المستودع مباشرة.
+                {repo.trim() === DEFAULT_REPO_URL
+                  ? 'هذا هو المستودع الأساسي المعتمد للمنظومة، ويمكنك تغييره لأي مستودع آخر عند الحاجة.'
+                  : 'تم تعيين مستودع مخصص، يمكنك حفظه أو استعادة المستودع الأساسي بنقرة زر.'}
               </p>
             </div>
 
@@ -414,14 +441,27 @@ git push -u origin ${branch.trim() || 'main'}`;
               {showPushGuide ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
 
-            <button
-              type="button"
-              onClick={handleSaveConfig}
-              className="w-full sm:w-auto text-xs font-bold text-slate-600 hover:text-slate-800 bg-white hover:bg-slate-100 border border-slate-300 px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
-            >
-              <Save size={13} />
-              <span>حفظ إعدادات المستودع محلياً</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              {repo.trim() !== DEFAULT_REPO_URL && (
+                <button
+                  type="button"
+                  onClick={handleResetToDefault}
+                  className="w-full sm:w-auto text-xs font-bold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-3.5 py-1.5 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                >
+                  <RotateCcw size={13} />
+                  <span>استعادة المستودع الأساسي</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleSaveConfig}
+                className="w-full sm:w-auto text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-300 px-3.5 py-1.5 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+              >
+                <Save size={13} />
+                <span>حفظ التعديلات</span>
+              </button>
+            </div>
           </div>
 
           {/* Interactive First Push Step-by-Step Guide */}
@@ -725,7 +765,7 @@ git push -u origin ${branch.trim() || 'main'}`;
         <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-3.5 flex items-start sm:items-center gap-3 text-emerald-900 text-xs">
           <ShieldCheck size={20} className="text-emerald-600 shrink-0 mt-0.5 sm:mt-0" />
           <div className="leading-relaxed">
-            <strong>ضمان سلامة البيانات:</strong> عملية سحب الملفات وتحديث المنظومة لا تمس إطلاقاً سجلات الموظفين أو قواعد البيانات المركزية (<code className="font-mono font-bold text-emerald-950">hr-central-database.json</code>) أو النسخ الاحتياطية الخاصة بك.
+            <strong>ضمان سلامة البيانات:</strong> عملية تحديث المنظومة تتم بأمان تام في نفس المسار، ولا تمس إطلاقاً سجلات الموظفين أو قواعد البيانات أو النسخ الاحتياطية الخاصة بك.
           </div>
         </div>
 

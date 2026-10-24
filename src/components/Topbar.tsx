@@ -1,11 +1,10 @@
-import { Bell, Search, UserCircle, AlertTriangle, AlertCircle, Calendar, Clock, CheckSquare, X, ShieldAlert, Cable, Server, GitBranch } from 'lucide-react';
+import { Bell, Search, UserCircle, AlertTriangle, AlertCircle, Calendar, Clock, CheckSquare, X, ShieldAlert, Cable, Server } from 'lucide-react';
 import React, { useEffect, useState, useRef } from 'react';
 import { toast } from './Toast';
 import { Employee, LeaveRequest } from '../types';
 import { isManagerEmployee, isRegularUser } from '../lib/managerGuard';
 import { getStoredServerConfig, fetchNetworkInterfaces } from '../lib/serverSync';
 import EthernetServerModal from './EthernetServerModal';
-import GitHubUpdateModal from './GitHubUpdateModal';
 
 import { useStore } from '../store';
 
@@ -29,7 +28,6 @@ export default function Topbar({
   });
   const [showNotifications, setShowNotifications] = useState(false);
   const [showEthernetModal, setShowEthernetModal] = useState(false);
-  const [showGitHubModal, setShowGitHubModal] = useState(false);
   const [ethernetIp, setEthernetIp] = useState<string>('192.168.1.1');
   const [serverPort, setServerPort] = useState<number>(3000);
   const [serverRole, setServerRole] = useState<'host' | 'client' | 'standalone'>('host');
@@ -305,19 +303,6 @@ export default function Topbar({
           </button>
         )}
 
-        {/* زر التحديث السريع عبر GitHub */}
-        {isDevOrAdmin && (
-          <button
-            type="button"
-            onClick={() => setShowGitHubModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer hover:shadow-sm"
-            title="فحص وسحب التحديثات من مستودع GitHub بنقرة زر"
-          >
-            <GitBranch size={15} className="text-blue-400" />
-            <span className="hidden sm:inline">تحديث من GitHub</span>
-          </button>
-        )}
-
         {/* Real-time Alerts Dropdown Container */}
         <div className="relative" ref={dropdownRef}>
           <button 
@@ -420,11 +405,6 @@ export default function Topbar({
     <EthernetServerModal
       isOpen={showEthernetModal}
       onClose={() => setShowEthernetModal(false)}
-    />
-
-    <GitHubUpdateModal
-      isOpen={showGitHubModal}
-      onClose={() => setShowGitHubModal(false)}
     />
   </>
   );

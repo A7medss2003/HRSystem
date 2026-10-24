@@ -67,6 +67,47 @@ function getCentralDbFile() {
   return path.join(app.getPath('userData'), 'hr-central-database.json');
 }
 
+// دوال آمنة لتحميل وحدات الخادم سواء في بيئة التطوير أو داخل حزمة Electron بعد التثبيت (app.asar)
+function loadGitHubUpdater() {
+  const candidates = [
+    path.join(__dirname, 'src', 'server', 'githubUpdater.cjs'),
+    path.join(__dirname, 'githubUpdater.cjs'),
+    path.resolve(process.cwd(), 'src', 'server', 'githubUpdater.cjs'),
+    path.resolve(process.cwd(), 'githubUpdater.cjs'),
+    './src/server/githubUpdater.cjs',
+    './githubUpdater.cjs'
+  ];
+
+  for (const target of candidates) {
+    try {
+      if (typeof target === 'string' && (fs.existsSync(target) || !path.isAbsolute(target))) {
+        return require(target);
+      }
+    } catch (e) {}
+  }
+  return require('./src/server/githubUpdater.cjs');
+}
+
+function loadScannerDriver() {
+  const candidates = [
+    path.join(__dirname, 'src', 'server', 'scannerDriver.cjs'),
+    path.join(__dirname, 'scannerDriver.cjs'),
+    path.resolve(process.cwd(), 'src', 'server', 'scannerDriver.cjs'),
+    path.resolve(process.cwd(), 'scannerDriver.cjs'),
+    './src/server/scannerDriver.cjs',
+    './scannerDriver.cjs'
+  ];
+
+  for (const target of candidates) {
+    try {
+      if (typeof target === 'string' && (fs.existsSync(target) || !path.isAbsolute(target))) {
+        return require(target);
+      }
+    } catch (e) {}
+  }
+  return require('./src/server/scannerDriver.cjs');
+}
+
 function startLanServer(port = 3000) {
   try {
     const express = require('express');
@@ -98,7 +139,7 @@ function startLanServer(port = 3000) {
     // Native Scanner Hardware Interface Endpoints (WIA / TWAIN / SANE)
     serverApp.get('/api/scanner/devices', async (req, res) => {
       try {
-        const { detectLocalScanners } = require('./src/server/scannerDriver.cjs');
+        const { detectLocalScanners } = loadScannerDriver();
         const devices = await detectLocalScanners();
         res.json({ success: true, devices });
       } catch (err) {
@@ -108,7 +149,7 @@ function startLanServer(port = 3000) {
 
     serverApp.post('/api/scanner/scan', async (req, res) => {
       try {
-        const { acquireScanFromDevice } = require('./src/server/scannerDriver.cjs');
+        const { acquireScanFromDevice } = loadScannerDriver();
         const result = await acquireScanFromDevice(req.body);
         res.json(result);
       } catch (err) {
@@ -129,7 +170,7 @@ function startLanServer(port = 3000) {
     // GitHub In-App System Updater Endpoints
     serverApp.post('/api/system/github/check', async (req, res) => {
       try {
-        const { checkGitHubUpdate } = require('./src/server/githubUpdater.cjs');
+        const { checkGitHubUpdate } = loadGitHubUpdater();
         const result = await checkGitHubUpdate(req.body || {});
         res.json(result);
       } catch (err) {
@@ -139,7 +180,7 @@ function startLanServer(port = 3000) {
 
     serverApp.post('/api/system/github/apply', async (req, res) => {
       try {
-        const { applyGitHubUpdate } = require('./src/server/githubUpdater.cjs');
+        const { applyGitHubUpdate } = loadGitHubUpdater();
         const result = await applyGitHubUpdate(req.body || {});
         res.json(result);
       } catch (err) {
@@ -149,7 +190,7 @@ function startLanServer(port = 3000) {
 
     serverApp.get('/api/system/github/version', (req, res) => {
       try {
-        const { getStoredVersion } = require('./src/server/githubUpdater.cjs');
+        const { getStoredVersion } = loadGitHubUpdater();
         res.json({ success: true, version: getStoredVersion() });
       } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -422,7 +463,7 @@ ipcMain.handle('print-html-document', async (event, { html, title }) => {
 // IPC Handlers for System Peripheral Scanner Driver (WIA / TWAIN / SANE)
 ipcMain.handle('scanner:list-devices', async () => {
   try {
-    const { detectLocalScanners } = require('./src/server/scannerDriver.cjs');
+    const { detectLocalScanners } = loadScannerDriver();
     return await detectLocalScanners();
   } catch (err) {
     console.error('IPC scanner:list-devices error:', err);
@@ -432,7 +473,7 @@ ipcMain.handle('scanner:list-devices', async () => {
 
 ipcMain.handle('scanner:scan-document', async (event, options) => {
   try {
-    const { acquireScanFromDevice } = require('./src/server/scannerDriver.cjs');
+    const { acquireScanFromDevice } = loadScannerDriver();
     return await acquireScanFromDevice(options);
   } catch (err) {
     console.error('IPC scanner:scan-document error:', err);
@@ -452,7 +493,7 @@ ipcMain.handle('scanner:get-system-status', () => {
 // --- GitHub In-App Updater IPC Handlers ---
 ipcMain.handle('github:check-update', async (event, config) => {
   try {
-    const { checkGitHubUpdate } = require('./src/server/githubUpdater.cjs');
+    const { checkGitHubUpdate } = loadGitHubUpdater();
     return await checkGitHubUpdate(config || {});
   } catch (err) {
     return { success: false, error: err.message };
@@ -461,7 +502,7 @@ ipcMain.handle('github:check-update', async (event, config) => {
 
 ipcMain.handle('github:apply-update', async (event, config) => {
   try {
-    const { applyGitHubUpdate } = require('./src/server/githubUpdater.cjs');
+    const { applyGitHubUpdate } = loadGitHubUpdater();
     return await applyGitHubUpdate(config || {});
   } catch (err) {
     return { success: false, error: err.message };
@@ -470,7 +511,7 @@ ipcMain.handle('github:apply-update', async (event, config) => {
 
 ipcMain.handle('github:get-version', () => {
   try {
-    const { getStoredVersion } = require('./src/server/githubUpdater.cjs');
+    const { getStoredVersion } = loadGitHubUpdater();
     return getStoredVersion();
   } catch (err) {
     return null;
@@ -480,7 +521,7 @@ ipcMain.handle('github:get-version', () => {
 // --- Exact IPC Handlers from User's Working System ---
 ipcMain.handle('get-scanners-list', async () => {
   try {
-    const { detectLocalScanners } = require('./src/server/scannerDriver.cjs');
+    const { detectLocalScanners } = loadScannerDriver();
     const devices = await detectLocalScanners();
     return devices.map(d => d.name);
   } catch (err) {
@@ -495,7 +536,7 @@ ipcMain.on('trigger-scan', async (event, options = {}) => {
     sender.send('scan-started');
     sender.send('scan-progress', 15);
 
-    const { acquireScanFromDevice } = require('./src/server/scannerDriver.cjs');
+    const { acquireScanFromDevice } = loadScannerDriver();
 
     const pTimer1 = setTimeout(() => {
       try { sender.send('scan-progress', 50); } catch (e) {}
