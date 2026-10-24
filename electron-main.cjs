@@ -108,6 +108,18 @@ function loadScannerDriver() {
   return require('./src/server/scannerDriver.cjs');
 }
 
+function getAppDistPath() {
+  try {
+    const updatedDist = path.join(app.getPath('userData'), 'app_update', 'dist');
+    const updatedIndex = path.join(updatedDist, 'index.html');
+    if (fs.existsSync(updatedIndex)) {
+      console.log('Running from user downloaded update dist:', updatedDist);
+      return updatedDist;
+    }
+  } catch (e) {}
+  return path.join(__dirname, 'dist');
+}
+
 function startLanServer(port = 3000) {
   try {
     const express = require('express');
@@ -251,24 +263,29 @@ function startLanServer(port = 3000) {
       }
     });
 
-function getAppDistPath() {
-  try {
-    const updatedDist = path.join(app.getPath('userData'), 'app_update', 'dist');
-    const updatedIndex = path.join(updatedDist, 'index.html');
-    if (fs.existsSync(updatedIndex)) {
-      return updatedDist;
-    }
-  } catch (e) {}
-  return path.join(__dirname, 'dist');
-}
+    serverApp.use((req, res, next) => {
+      const activeDist = getAppDistPath();
+      if (fs.existsSync(activeDist)) {
+        express.static(activeDist, {
+          etag: false,
+          maxAge: 0,
+          setHeaders: (r) => {
+            r.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+          }
+        })(req, res, next);
+      } else {
+        next();
+      }
+    });
 
-    const distPath = getAppDistPath();
-    if (fs.existsSync(distPath)) {
-      serverApp.use(express.static(distPath));
-      serverApp.get('*', (req, res) => {
-        res.sendFile(path.join(distPath, 'index.html'));
-      });
-    }
+    serverApp.get('*', (req, res) => {
+      const activeDist = getAppDistPath();
+      if (fs.existsSync(path.join(activeDist, 'index.html'))) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return res.sendFile(path.join(activeDist, 'index.html'));
+      }
+      res.status(404).send('HR System Frontend Not Ready');
+    });
 
     embeddedServer = serverApp.listen(port, '0.0.0.0', () => {
       console.log(`HR System Ethernet LAN Server running at http://0.0.0.0:${port}`);
@@ -530,14 +547,19 @@ ipcMain.handle('github:get-version', () => {
   }
 });
 
-ipcMain.handle('app:reload-window', () => {
+ipcMain.handle('app:reload-window', async () => {
   try {
     if (mainWindow) {
       if (process.env.NODE_ENV === 'development') {
         mainWindow.reload();
       } else {
         const distPath = getAppDistPath();
-        mainWindow.loadFile(path.join(distPath, 'index.html'));
+        const targetIndex = path.join(distPath, 'index.html');
+        console.log('Reloading active window from:', targetIndex);
+        try {
+          await mainWindow.webContents.session.clearCache();
+        } catch (cErr) {}
+        mainWindow.loadFile(targetIndex);
       }
       return { success: true };
     }

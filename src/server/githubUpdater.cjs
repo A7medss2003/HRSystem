@@ -25,9 +25,13 @@ function getUserDataDir() {
     return electronApp.getPath('userData');
   }
 
-  // Standard fallback
+  // Windows standard %APPDATA%
   const baseDir = process.env.APPDATA || 
                   (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : '/var/local');
+  
+  // Prefer 'HR System' if exists, fallback to 'hr-system'
+  const candidateHR = path.join(baseDir, 'HR System');
+  if (fs.existsSync(candidateHR)) return candidateHR;
   return path.join(baseDir, 'hr-system');
 }
 
@@ -88,6 +92,23 @@ function saveStoredVersion(data) {
 }
 
 async function downloadGitHubFile({ owner, repo, sha, filePath, targetPath, token, commitSha }) {
+  // Strategy 1: Try raw.githubusercontent.com first (Fastest and no rate limiting for public files)
+  const rawHeaders = { 'User-Agent': 'HR-System-InApp-Updater' };
+  if (token && token.trim()) {
+    rawHeaders['Authorization'] = `token ${token.trim()}`;
+  }
+  const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${commitSha}/${filePath}`;
+
+  try {
+    const rawRes = await fetch(rawUrl, { headers: rawHeaders });
+    if (rawRes.ok) {
+      const rawBuf = await rawRes.arrayBuffer();
+      fs.writeFileSync(targetPath, Buffer.from(rawBuf));
+      return true;
+    }
+  } catch (e) {}
+
+  // Strategy 2: Git Blobs API (Works with GitHub tokens for private repositories)
   const headers = {
     'User-Agent': 'HR-System-InApp-Updater',
     'Accept': 'application/vnd.github.v3.raw'
@@ -96,30 +117,14 @@ async function downloadGitHubFile({ owner, repo, sha, filePath, targetPath, toke
     headers['Authorization'] = `token ${token.trim()}`;
   }
 
-  // 1. Try Git Blobs API (Works for public & private repositories)
   const blobUrl = `https://api.github.com/repos/${owner}/${repo}/git/blobs/${sha}`;
-
-  try {
-    const res = await fetch(blobUrl, { headers });
-    if (res.ok) {
-      const arrayBuf = await res.arrayBuffer();
-      fs.writeFileSync(targetPath, Buffer.from(arrayBuf));
-      return true;
-    }
-  } catch (e) {}
-
-  // 2. Fallback to raw.githubusercontent.com
-  const rawHeaders = { 'User-Agent': 'HR-System-InApp-Updater' };
-  if (token && token.trim()) {
-    rawHeaders['Authorization'] = `token ${token.trim()}`;
+  const res = await fetch(blobUrl, { headers });
+  if (!res.ok) {
+    throw new Error(`تعذر تنزيل الملف ${filePath} (${res.status} ${res.statusText})`);
   }
-  const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${commitSha}/${filePath}`;
-  const rawRes = await fetch(rawUrl, { headers: rawHeaders });
-  if (!rawRes.ok) {
-    throw new Error(`Failed to download ${filePath} (${rawRes.status})`);
-  }
-  const rawBuf = await rawRes.arrayBuffer();
-  fs.writeFileSync(targetPath, Buffer.from(rawBuf));
+
+  const arrayBuf = await res.arrayBuffer();
+  fs.writeFileSync(targetPath, Buffer.from(arrayBuf));
   return true;
 }
 
@@ -151,7 +156,7 @@ async function checkGitHubUpdate({ repo, branch = 'main', token = '', currentCom
     if (res.status === 404) {
       return {
         success: false,
-        error: `المستودع (${owner}/${repoName}) أو الفرع (${targetBranch}) غير موجود على GitHub، أو المستودع خاص (Private) ويتطلب إدخال Token.`
+        error: `المستودع (${owner}/${repoName}) أو الفرع (${targetBranch}) غير موجود على GitHub، أو المستودع خاص (Private) ويتطلب إدخال مفتاح الوصول (Token).`
       };
     }
 
@@ -257,7 +262,19 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
       if (!pullResult.success) {
         addLog(`تنبيه: git pull واجه صعوبة (${pullResult.output}). جاري استخدام التحديث السحابي المباشر...`);
       } else {
-        addLog('تم سحب التعديلات بنجاح من Git!');
+        addLog('تم سحب التعديلات بنجاح من Git! جاري إعادة بناء ملفات الواجهة...');
+        try {
+          await new Promise((resolve) => {
+            exec('npm run build', { cwd: rootDir, timeout: 90000 }, (bErr, bStdout, bStderr) => {
+              if (!bErr) {
+                addLog('✓ تم بناء الواجهة المحدثة بنجاح (npm run build)!');
+              } else {
+                addLog(`ملاحظة في البناء: ${bStderr || bErr.message}`);
+              }
+              resolve();
+            });
+          });
+        } catch (e) {}
       }
     } catch (e) {
       addLog('جاري اعتماد التحديث المباشر للملفات...');
@@ -265,7 +282,7 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
   }
 
   // 3. Download & apply dist/ files for installed desktop application
-  addLog('جاري فحص شجرة الملفات المعدلة على GitHub...');
+  addLog('جاري فحص شجرة الملفات المجهزة في المستودع...');
   const treeUrl = `https://api.github.com/repos/${owner}/${repoName}/git/trees/${latest.sha}?recursive=1`;
   const treeHeaders = {
     'Accept': 'application/vnd.github.v3+json',
@@ -282,12 +299,24 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
       const treeData = await treeRes.json();
       if (treeData && Array.isArray(treeData.tree)) {
         // Collect all compiled frontend files under dist/
-        const distBlobs = treeData.tree.filter(
-          item => item.type === 'blob' && item.path.startsWith('dist/')
+        let distBlobs = treeData.tree.filter(
+          item => item.type === 'blob' && (item.path.startsWith('dist/') || item.path.startsWith('dist\\'))
         );
 
+        let isRootDist = false;
+        // If not under dist/, check if repository has assets/ and index.html at root
+        if (distBlobs.length === 0) {
+          const rootAssets = treeData.tree.filter(
+            item => item.type === 'blob' && (item.path.startsWith('assets/') || item.path === 'index.html' || item.path === 'logo.png')
+          );
+          if (rootAssets.some(x => x.path === 'index.html')) {
+            distBlobs = rootAssets;
+            isRootDist = true;
+          }
+        }
+
         if (distBlobs.length > 0) {
-          addLog(`تم العثور على ${distBlobs.length} ملف للواجهة (dist/)، جاري التحميل والتثبيت المباشر...`);
+          addLog(`تم العثور على ${distBlobs.length} ملف للواجهة، جاري التحميل والتثبيت المباشر...`);
           const updateBase = getUpdateDir();
           const targetDist = path.join(updateBase, 'dist');
           if (!fs.existsSync(targetDist)) {
@@ -296,7 +325,8 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
 
           for (let i = 0; i < distBlobs.length; i++) {
             const blob = distBlobs[i];
-            const destPath = path.join(updateBase, blob.path);
+            const relativeSubPath = isRootDist ? path.join('dist', blob.path) : blob.path;
+            const destPath = path.join(updateBase, relativeSubPath);
             const parentDir = path.dirname(destPath);
             if (!fs.existsSync(parentDir)) {
               fs.mkdirSync(parentDir, { recursive: true });
@@ -314,26 +344,44 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
               });
               distFilesUpdated++;
 
-              if ((i + 1) % 5 === 0 || (i + 1) === distBlobs.length) {
+              if ((i + 1) % 4 === 0 || (i + 1) === distBlobs.length) {
                 addLog(`تنزيل الملفات: (${i + 1}/${distBlobs.length})...`);
               }
             } catch (dlErr) {
               console.warn(`Error downloading ${blob.path}:`, dlErr.message);
+              addLog(`تنبيه أثناء تنزيل ${blob.path}: ${dlErr.message}`);
             }
           }
 
-          addLog(`✓ تم تحميل وتحديث كافة ملفات الواجهة بنجاح (${distFilesUpdated} ملف)!`);
+          if (fs.existsSync(path.join(targetDist, 'index.html'))) {
+            addLog(`✓ تم تحميل وتحديث كافة ملفات الواجهة بنجاح (${distFilesUpdated} ملف)!`);
+          } else {
+            addLog(`تنبيه: تم تحميل الملفات ولكن لم يُعثر على index.html في مجلد التحديث`);
+          }
         } else {
-          addLog('تنبيه: تم جلب التحديث ولكن لم يُعثر على مجلد dist/ في مستودع GitHub.');
-          addLog('نصيحة: تأكد من تشغيل "npm run build" ثم رفع مجلد dist إلى GitHub لتظهر التعديلات تلقائياً للمستخدمين.');
+          addLog('❌ تنبيه هام: تم العثور على Commit جديد، ولكن مستودع GitHub لا يحتوي على مجلد dist/ المبني.');
+          addLog('السبب: تم رفع التعديلات كأكواد برمجية فقط، ويجب أن يحتوي المستودع على ملفات dist/ التنفيذية.');
+          addLog('الحل: قم بتشغيل "رفع_التحديث_الى_جيت_هب.bat" على جهاز المطور لرفع مجلد dist/ إلى المستودع.');
         }
       }
+    } else {
+      addLog(`تعذر قراءة شجرة المستودع (${treeRes.status}): ${treeRes.statusText}`);
     }
   } catch (treeErr) {
     addLog(`ملاحظة أثناء فحص الشجرة: ${treeErr.message}`);
   }
 
-  // 4. Record new version info locally
+  // 4. Verification Check: Did files actually update?
+  if (!isGitRepo && distFilesUpdated === 0) {
+    return {
+      success: false,
+      distFilesUpdated: 0,
+      logs,
+      error: 'المستودع على GitHub لا يحتوي على ملفات الواجهة المبنية (dist/). يرجى تشغيل "رفع_التحديث_الى_جيت_هب.bat" على جهاز المطور أولاً ثم المحاولة مجدداً.'
+    };
+  }
+
+  // 5. Record new version info locally
   saveStoredVersion({
     commitSha: latest.sha,
     shortSha: latest.shortSha,

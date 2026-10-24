@@ -573,17 +573,27 @@ export const GitHubUpdate: React.FC<GitHubUpdateProps> = ({
             {updateSuccess && (
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3.5">
                 <div className="flex items-center gap-2 text-emerald-800 text-xs font-bold">
-                  <Sparkles size={16} className="text-emerald-600" />
-                  <span>تم تطبيق كافة الملفات الجديدة بنجاح! يُنصح بإعادة تحميل الصفحة لتفعيل التغييرات.</span>
+                  <Sparkles size={16} className="text-emerald-600 shrink-0" />
+                  <span>تم تنزيل وتثبيت كافة ملفات الواجهة بنجاح! اختر طريقة التفعيل:</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => githubUpdateService.reloadApp()}
-                  className="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors"
-                >
-                  <RotateCcw size={13} />
-                  <span>إعادة تحميل المنظومة الآن</span>
-                </button>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => githubUpdateService.reloadApp()}
+                    className="flex-1 sm:flex-initial px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors"
+                  >
+                    <RotateCcw size={13} />
+                    <span>تحديث فوري للنافذة</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => githubUpdateService.relaunchApp()}
+                    className="flex-1 sm:flex-initial px-3.5 py-2 bg-slate-900 hover:bg-black text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors"
+                  >
+                    <RefreshCw size={13} />
+                    <span>إعادة تشغيل البرنامج</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
