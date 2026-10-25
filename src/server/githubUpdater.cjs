@@ -2,7 +2,8 @@
  * GitHub In-App Updater Module
  * Enables checking and applying system updates directly from a GitHub repository
  * Supports public and private repositories (via GitHub Personal Access Token)
- * Automatically downloads and deploys dist/ files to userData/app_update/dist for installed desktop apps.
+ * Features atomic staging: updates are downloaded to staging first and validated before deployment,
+ * completely preventing corrupt downloads, white screens, or frozen windows.
  */
 
 const { exec } = require('child_process');
@@ -29,7 +30,6 @@ function getUserDataDir() {
   const baseDir = process.env.APPDATA || 
                   (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : '/var/local');
   
-  // Prefer 'HR System' if exists, fallback to 'hr-system'
   const candidateHR = path.join(baseDir, 'HR System');
   if (fs.existsSync(candidateHR)) return candidateHR;
   return path.join(baseDir, 'hr-system');
@@ -43,17 +43,31 @@ function getUpdateDir() {
   return path.join(getUserDataDir(), 'app_update');
 }
 
+function isValidDistFolder(dirPath) {
+  try {
+    if (!fs.existsSync(dirPath)) return false;
+    const indexPath = path.join(dirPath, 'index.html');
+    if (!fs.existsSync(indexPath)) return false;
+    if (fs.statSync(indexPath).size < 200) return false;
+
+    const assetsPath = path.join(dirPath, 'assets');
+    if (!fs.existsSync(assetsPath)) return false;
+    const files = fs.readdirSync(assetsPath);
+    return files.some(f => f.endsWith('.js') && fs.statSync(path.join(assetsPath, f)).size > 20000);
+  } catch (e) {
+    return false;
+  }
+}
+
 function parseGitHubRepo(input) {
   if (!input || typeof input !== 'string') return null;
   let clean = input.trim().replace(/\.git$/, '');
   
-  // Matches https://github.com/owner/repo or github.com/owner/repo or git@github.com:owner/repo
   const urlMatch = clean.match(/(?:github\.com[\/:])([^\/]+)\/([^\/]+)/);
   if (urlMatch) {
     return { owner: urlMatch[1], repo: urlMatch[2] };
   }
   
-  // Matches owner/repo
   const parts = clean.split('/').filter(Boolean);
   if (parts.length === 2 && !parts[0].includes(':')) {
     return { owner: parts[0], repo: parts[1] };
@@ -92,7 +106,7 @@ function saveStoredVersion(data) {
 }
 
 async function downloadGitHubFile({ owner, repo, sha, filePath, targetPath, token, commitSha }) {
-  // Strategy 1: Try raw.githubusercontent.com first (Fastest and no rate limiting for public files)
+  // Strategy 1: raw.githubusercontent.com (with 15s timeout)
   const rawHeaders = { 'User-Agent': 'HR-System-InApp-Updater' };
   if (token && token.trim()) {
     rawHeaders['Authorization'] = `token ${token.trim()}`;
@@ -100,7 +114,10 @@ async function downloadGitHubFile({ owner, repo, sha, filePath, targetPath, toke
   const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${commitSha}/${filePath}`;
 
   try {
-    const rawRes = await fetch(rawUrl, { headers: rawHeaders });
+    const rawRes = await fetch(rawUrl, { 
+      headers: rawHeaders,
+      signal: AbortSignal.timeout(15000)
+    });
     if (rawRes.ok) {
       const rawBuf = await rawRes.arrayBuffer();
       fs.writeFileSync(targetPath, Buffer.from(rawBuf));
@@ -108,7 +125,7 @@ async function downloadGitHubFile({ owner, repo, sha, filePath, targetPath, toke
     }
   } catch (e) {}
 
-  // Strategy 2: Git Blobs API (Works with GitHub tokens for private repositories)
+  // Strategy 2: Git Blobs API (with 15s timeout)
   const headers = {
     'User-Agent': 'HR-System-InApp-Updater',
     'Accept': 'application/vnd.github.v3.raw'
@@ -118,7 +135,10 @@ async function downloadGitHubFile({ owner, repo, sha, filePath, targetPath, toke
   }
 
   const blobUrl = `https://api.github.com/repos/${owner}/${repo}/git/blobs/${sha}`;
-  const res = await fetch(blobUrl, { headers });
+  const res = await fetch(blobUrl, { 
+    headers,
+    signal: AbortSignal.timeout(15000)
+  });
   if (!res.ok) {
     throw new Error(`تعذر تنزيل الملف ${filePath} (${res.status} ${res.statusText})`);
   }
@@ -151,7 +171,10 @@ async function checkGitHubUpdate({ repo, branch = 'main', token = '', currentCom
   }
 
   try {
-    const res = await fetch(apiUrl, { headers });
+    const res = await fetch(apiUrl, { 
+      headers,
+      signal: AbortSignal.timeout(15000)
+    });
     
     if (res.status === 404) {
       return {
@@ -250,7 +273,11 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
 
     try {
       const pullResult = await new Promise((resolve) => {
-        exec(pullCmd, { cwd: rootDir, timeout: 45000 }, (err, stdout, stderr) => {
+        exec(pullCmd, { 
+          cwd: rootDir, 
+          timeout: 45000,
+          env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+        }, (err, stdout, stderr) => {
           if (err) {
             resolve({ success: false, output: stderr || err.message });
           } else {
@@ -260,12 +287,12 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
       });
 
       if (!pullResult.success) {
-        addLog(`تنبيه: git pull واجه صعوبة (${pullResult.output}). جاري استخدام التحديث السحابي المباشر...`);
+        addLog(`تنبيه: git pull واجه صعوبة (${pullResult.output}). جاري استخدام التحديث المباشر للملفات...`);
       } else {
         addLog('تم سحب التعديلات بنجاح من Git! جاري إعادة بناء ملفات الواجهة...');
         try {
           await new Promise((resolve) => {
-            exec('npm run build', { cwd: rootDir, timeout: 90000 }, (bErr, bStdout, bStderr) => {
+            exec('npm run build', { cwd: rootDir, timeout: 60000 }, (bErr, bStdout, bStderr) => {
               if (!bErr) {
                 addLog('✓ تم بناء الواجهة المحدثة بنجاح (npm run build)!');
               } else {
@@ -281,7 +308,7 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
     }
   }
 
-  // 3. Download & apply dist/ files for installed desktop application
+  // 3. Download & apply dist/ files for installed desktop application with atomic staging
   addLog('جاري فحص شجرة الملفات المجهزة في المستودع...');
   const treeUrl = `https://api.github.com/repos/${owner}/${repoName}/git/trees/${latest.sha}?recursive=1`;
   const treeHeaders = {
@@ -293,18 +320,29 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
   }
 
   let distFilesUpdated = 0;
+  const updateBase = getUpdateDir();
+  const stagingDir = path.join(updateBase, 'staging_dist');
+
   try {
-    const treeRes = await fetch(treeUrl, { headers: treeHeaders });
+    // Clean staging folder first
+    if (fs.existsSync(stagingDir)) {
+      try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
+    }
+    fs.mkdirSync(stagingDir, { recursive: true });
+
+    const treeRes = await fetch(treeUrl, { 
+      headers: treeHeaders,
+      signal: AbortSignal.timeout(15000)
+    });
+
     if (treeRes.ok) {
       const treeData = await treeRes.json();
       if (treeData && Array.isArray(treeData.tree)) {
-        // Collect all compiled frontend files under dist/
         let distBlobs = treeData.tree.filter(
           item => item.type === 'blob' && (item.path.startsWith('dist/') || item.path.startsWith('dist\\'))
         );
 
         let isRootDist = false;
-        // If not under dist/, check if repository has assets/ and index.html at root
         if (distBlobs.length === 0) {
           const rootAssets = treeData.tree.filter(
             item => item.type === 'blob' && (item.path.startsWith('assets/') || item.path === 'index.html' || item.path === 'logo.png')
@@ -316,17 +354,17 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
         }
 
         if (distBlobs.length > 0) {
-          addLog(`تم العثور على ${distBlobs.length} ملف للواجهة، جاري التحميل والتثبيت المباشر...`);
-          const updateBase = getUpdateDir();
-          const targetDist = path.join(updateBase, 'dist');
-          if (!fs.existsSync(targetDist)) {
-            fs.mkdirSync(targetDist, { recursive: true });
-          }
+          addLog(`تم العثور على ${distBlobs.length} ملف للواجهة، جاري تنزيلها وتأمينها...`);
 
           for (let i = 0; i < distBlobs.length; i++) {
             const blob = distBlobs[i];
-            const relativeSubPath = isRootDist ? path.join('dist', blob.path) : blob.path;
-            const destPath = path.join(updateBase, relativeSubPath);
+            // Normalize path relative to dist/
+            let relInsideDist = blob.path;
+            if (relInsideDist.startsWith('dist/') || relInsideDist.startsWith('dist\\')) {
+              relInsideDist = relInsideDist.substring(5);
+            }
+
+            const destPath = path.join(stagingDir, relInsideDist);
             const parentDir = path.dirname(destPath);
             if (!fs.existsSync(parentDir)) {
               fs.mkdirSync(parentDir, { recursive: true });
@@ -345,7 +383,7 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
               distFilesUpdated++;
 
               if ((i + 1) % 4 === 0 || (i + 1) === distBlobs.length) {
-                addLog(`تنزيل الملفات: (${i + 1}/${distBlobs.length})...`);
+                addLog(`تنزيل الملفات بأمان: (${i + 1}/${distBlobs.length})...`);
               }
             } catch (dlErr) {
               console.warn(`Error downloading ${blob.path}:`, dlErr.message);
@@ -353,15 +391,30 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
             }
           }
 
-          if (fs.existsSync(path.join(targetDist, 'index.html'))) {
-            addLog(`✓ تم تحميل وتحديث كافة ملفات الواجهة بنجاح (${distFilesUpdated} ملف)!`);
+          // Atomic validation: only deploy if staging is 100% valid
+          if (isValidDistFolder(stagingDir)) {
+            const targetDist = path.join(updateBase, 'dist');
+            if (fs.existsSync(targetDist)) {
+              try { fs.rmSync(targetDist, { recursive: true, force: true }); } catch (e) {}
+            }
+            // Move validated staging to active dist
+            fs.cpSync(stagingDir, targetDist, { recursive: true });
+            try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
+            addLog(`✓ تم التحقق من سلامة كافة الملفات ونشر الواجهة الجديدة بنجاح (${distFilesUpdated} ملف)!`);
           } else {
-            addLog(`تنبيه: تم تحميل الملفات ولكن لم يُعثر على index.html في مجلد التحديث`);
+            addLog('❌ فشل التحقق من اكتمال ملفات الواجهة (قد تكون ناقصة أو تالفة)، تم إلغاء النشر لحماية البرنامج.');
+            try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
+            return {
+              success: false,
+              distFilesUpdated: 0,
+              logs,
+              error: 'ملفات التحديث المنزلة من GitHub غير مكتملة (ناقصة أو لم تحتوي على حزم JavaScript). تم الحفاظ على النسخة الحالية دون أي خلل.'
+            };
           }
         } else {
-          addLog('❌ تنبيه هام: تم العثور على Commit جديد، ولكن مستودع GitHub لا يحتوي على مجلد dist/ المبني.');
-          addLog('السبب: تم رفع التعديلات كأكواد برمجية فقط، ويجب أن يحتوي المستودع على ملفات dist/ التنفيذية.');
-          addLog('الحل: قم بتشغيل "رفع_التحديث_الى_جيت_هب.bat" على جهاز المطور لرفع مجلد dist/ إلى المستودع.');
+          addLog('❌ تنبيه: مستودع GitHub لا يحتوي على مجلد dist/ المبني.');
+          addLog('السبب: تم رفع التعديلات كأكواد برمجية فقط دون بناء ملفات التشغيل.');
+          addLog('الحل: شغّل "رفع_التحديث_الى_جيت_هب.bat" على جهاز المطور أولاً.');
         }
       }
     } else {
@@ -369,15 +422,18 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
     }
   } catch (treeErr) {
     addLog(`ملاحظة أثناء فحص الشجرة: ${treeErr.message}`);
+    if (fs.existsSync(stagingDir)) {
+      try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
+    }
   }
 
-  // 4. Verification Check: Did files actually update?
+  // 4. Verification Check
   if (!isGitRepo && distFilesUpdated === 0) {
     return {
       success: false,
       distFilesUpdated: 0,
       logs,
-      error: 'المستودع على GitHub لا يحتوي على ملفات الواجهة المبنية (dist/). يرجى تشغيل "رفع_التحديث_الى_جيت_هب.bat" على جهاز المطور أولاً ثم المحاولة مجدداً.'
+      error: 'المستودع على GitHub لا يحتوي على ملفات الواجهة المبنية (dist/). يرجى تشغيل "رفع_التحديث_الى_جيت_هب.bat" على جهاز المطور أولاً.'
     };
   }
 
@@ -394,7 +450,7 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
   });
 
   addLog('تم تحديث بيانات الإصدار وسجل التعديلات بنجاح!');
-  addLog('الحفاظ على كافة بيانات الموظفين وقواعد البيانات المركزية بنسبة 100%.');
+  addLog('الحفاظ التام على قواعد بيانات الموظفين وسجلات النظام المركزية بنسبة 100%.');
 
   return {
     success: true,

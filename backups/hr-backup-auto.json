@@ -97,6 +97,14 @@
       "userName": "dev",
       "action": "تسجيل الدخول",
       "details": "قام المستخدم بتسجيل الدخول للنظام",
+      "id": "log-1792917301492bqc",
+      "timestamp": "2026-10-25T08:35:01.492Z"
+    },
+    {
+      "userId": "dev",
+      "userName": "dev",
+      "action": "تسجيل الدخول",
+      "details": "قام المستخدم بتسجيل الدخول للنظام",
       "id": "log-1792838514736c1y",
       "timestamp": "2026-10-24T10:41:54.736Z"
     },
@@ -200,6 +208,6 @@
   },
   "recoveryCodes": [],
   "backupPath": "D:\\HR_Backup",
-  "lastBackupDate": "2026-10-24T10:59:25.788Z",
-  "lastUpdated": "2026-10-24T10:59:25.789Z"
+  "lastBackupDate": "2026-10-25T08:46:51.449Z",
+  "lastUpdated": "2026-10-25T08:46:51.450Z"
 }

@@ -322,11 +322,16 @@ export default function DirectScannerModal({
       });
 
       const detectedName = device.productName || `HP ScanJet (معرف المنتج: ${device.productId})`;
-      const newOption: ScannerOption = {
+      const newOption: ScannerDevice = {
         id: `usb-${device.productId || Date.now()}`,
         name: `${detectedName} (متصل الآن)`,
-        type: 'usb',
-        status: 'متصل'
+        vendor: device.vendorId ? `Vendor ${device.vendorId}` : 'USB Scanner',
+        model: detectedName,
+        protocol: 'WebUSB',
+        driverName: 'Direct WebUSB Hardware Driver',
+        status: 'ready',
+        supportedResolutions: [150, 300, 600],
+        supportedModes: ['color', 'grayscale', 'bw']
       };
 
       setScannersList(prev => [newOption, ...prev.filter(p => p.id !== newOption.id)]);
@@ -338,11 +343,16 @@ export default function DirectScannerModal({
         try {
           const anyDevice = await (navigator as any).usb.requestDevice({ filters: [] });
           const detectedName = anyDevice.productName || 'ماسح ضوئي USB';
-          const newOption: ScannerOption = {
+          const newOption: ScannerDevice = {
             id: `usb-${Date.now()}`,
             name: `${detectedName} (متصل)`,
-            type: 'usb',
-            status: 'متصل'
+            vendor: 'USB Scanner',
+            model: detectedName,
+            protocol: 'WebUSB',
+            driverName: 'Generic WebUSB Driver',
+            status: 'ready',
+            supportedResolutions: [150, 300, 600],
+            supportedModes: ['color', 'grayscale', 'bw']
           };
           setScannersList(prev => [newOption, ...prev]);
           setSelectedScannerId(newOption.id);

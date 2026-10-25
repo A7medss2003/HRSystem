@@ -18,7 +18,13 @@ export function ToastContainer() {
 
   useEffect(() => {
     activeHandler = (msg: ToastMessage) => {
-      setMessages(prev => [...prev, msg]);
+      setMessages(prev => {
+        // Prevent exact duplicate if already visible
+        if (prev.some(m => m.text === msg.text)) return prev;
+        // Limit to max 3 messages on screen at any time
+        return [...prev.slice(-2), msg];
+      });
+
       setTimeout(() => {
         setMessages(prev => prev.filter(m => m.id !== msg.id));
       }, 4000);
@@ -100,7 +106,41 @@ export function ToastContainer() {
   );
 }
 
+// Time-based deduplication map to prevent repeated notification floods
+const recentToasts = new Map<string, number>();
+
 export const toast = (text: string, type?: ToastType) => {
+  if (!text || typeof text !== 'string') return;
+
+  // Filter out internal hardware adapter debug messages, rbc notices, and falling back chatter
+  const lower = text.toLowerCase();
+  if (
+    lower.includes('[rbc]') || 
+    lower.includes('rbc') || 
+    lower.includes('sees no video') || 
+    lower.includes('falling back to keyboard') ||
+    lower.includes('primary adapter') ||
+    lower.includes('adapter generic')
+  ) {
+    // Silently ignore internal debug and peripheral fallback messages
+    return;
+  }
+
+  // Deduplication: prevent repeated notifications with the same text within 5 seconds
+  const now = Date.now();
+  const lastShown = recentToasts.get(text);
+  if (lastShown && (now - lastShown) < 5000) {
+    return;
+  }
+  recentToasts.set(text, now);
+
+  // Clean old entries
+  if (recentToasts.size > 40) {
+    for (const [k, v] of recentToasts.entries()) {
+      if (now - v > 15000) recentToasts.delete(k);
+    }
+  }
+
   const msg: ToastMessage = {
     id: Date.now() + Math.random(),
     text,
@@ -110,6 +150,8 @@ export const toast = (text: string, type?: ToastType) => {
   if (activeHandler) {
     activeHandler(msg);
   } else {
-    pendingQueue.push(msg);
+    if (pendingQueue.length < 3) {
+      pendingQueue.push(msg);
+    }
   }
 };

@@ -151,7 +151,10 @@ export class GitHubUpdateService {
     const ipc = getIpcRenderer();
     if (ipc) {
       try {
-        const res = await ipc.invoke('github:check-update', config);
+        const res = await Promise.race([
+          ipc.invoke('github:check-update', config),
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('IPC check timeout')), 10000))
+        ]);
         if (res && res.success) return res;
         if (res && res.error && !res.error.includes('Cannot find module')) {
           return res;
@@ -159,12 +162,13 @@ export class GitHubUpdateService {
       } catch (e) {}
     }
 
-    // 2. Try Embedded Express API
+    // 2. Try Embedded Express API with 10s timeout
     try {
       const res = await fetch('/api/system/github/check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
+        body: JSON.stringify(config),
+        signal: AbortSignal.timeout(10000)
       });
       if (res.ok) {
         const data = await res.json();
@@ -175,7 +179,7 @@ export class GitHubUpdateService {
       }
     } catch (e) {}
 
-    // 3. Direct Client-side GitHub REST API Query
+    // 3. Direct Client-side GitHub REST API Query with 12s timeout
     const parsed = this.parseRepo(config.repo);
     if (!parsed) {
       return {
@@ -197,7 +201,10 @@ export class GitHubUpdateService {
     }
 
     try {
-      const res = await fetch(apiUrl, { headers });
+      const res = await fetch(apiUrl, { 
+        headers,
+        signal: AbortSignal.timeout(12000)
+      });
       if (res.status === 404) {
         return {
           success: false,
@@ -258,11 +265,14 @@ export class GitHubUpdateService {
   public async applyUpdate(customConfig?: Partial<GitHubUpdateConfig>): Promise<GitHubApplyResult> {
     const config = { ...this.getConfig(), ...customConfig };
 
-    // 1. Try Electron IPC
+    // 1. Try Electron IPC with 45s race timeout
     const ipc = getIpcRenderer();
     if (ipc) {
       try {
-        const res = await ipc.invoke('github:apply-update', config);
+        const res = await Promise.race([
+          ipc.invoke('github:apply-update', config),
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('IPC update timeout')), 45000))
+        ]);
         if (res && res.success) {
           if (res.latestCommit?.sha) {
             localStorage.setItem('hr_installed_commit_sha', res.latestCommit.sha);
@@ -273,12 +283,13 @@ export class GitHubUpdateService {
       } catch (e) {}
     }
 
-    // 2. Try Embedded Server API
+    // 2. Try Embedded Server API with 45s timeout
     try {
       const res = await fetch('/api/system/github/apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
+        body: JSON.stringify(config),
+        signal: AbortSignal.timeout(45000)
       });
       if (res.ok) {
         const data = await res.json();
@@ -329,7 +340,10 @@ export class GitHubUpdateService {
     const ipc = getIpcRenderer();
     if (ipc) {
       try {
-        await ipc.invoke('app:reload-window');
+        await Promise.race([
+          ipc.invoke('app:reload-window'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+        ]);
         return;
       } catch (e) {}
     }
@@ -345,7 +359,34 @@ export class GitHubUpdateService {
     const ipc = getIpcRenderer();
     if (ipc) {
       try {
-        await ipc.invoke('app:relaunch');
+        await Promise.race([
+          ipc.invoke('app:relaunch'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+        ]);
+        return;
+      } catch (e) {}
+    }
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
+  }
+
+  /**
+   * استعادة النسخة الأصلية للبرنامج وإلغاء أي تحديثات غير مكتملة
+   */
+  public async resetToOriginal(): Promise<void> {
+    try {
+      localStorage.removeItem('hr_installed_commit_sha');
+      localStorage.removeItem('hr_last_update_date');
+    } catch (e) {}
+
+    const ipc = getIpcRenderer();
+    if (ipc) {
+      try {
+        await Promise.race([
+          ipc.invoke('app:reset-to-original'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+        ]);
         return;
       } catch (e) {}
     }

@@ -1907,7 +1907,7 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {formData.equipments.map(eq => (
                   <div key={eq.id} className="p-5 border border-slate-200 rounded-xl bg-slate-50 relative group transition-all hover:border-blue-300">
-                    <button type="button" onClick={() => printHandoverReceipt(eq.name, eq.details)} className="absolute top-2 left-10 p-1.5 text-slate-500 hover:bg-slate-200 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity" title="طباعة إيصال الاستلام"><Printer size={16}/></button>
+                    <button type="button" onClick={() => printHandoverReceipt(eq.name, eq.notes || '')} className="absolute top-2 left-10 p-1.5 text-slate-500 hover:bg-slate-200 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity" title="طباعة إيصال الاستلام"><Printer size={16}/></button>
                     {!readOnly && <button type="button" onClick={() => handleDeleteEquipment(eq.id)} className="absolute top-2 left-2 p-1.5 text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button>}
                     <div className="grid grid-cols-2 gap-3 mt-2">
                       <InputField readOnly={readOnly} label="الاسم" value={eq.name} onChange={(v: any) => handleUpdateEquipment(eq.id, 'name', v)} className="col-span-2" />

@@ -258,11 +258,11 @@ export default function DeveloperSettings() {
               </button>
             </div>
           </div>
+        </div>
 
-          {/* GitHub System Updates Component */}
-          <div className="md:col-span-2">
-            <GitHubUpdate />
-          </div>
+        {/* GitHub System Updates Component */}
+        <div className="lg:col-span-2">
+          <GitHubUpdate />
         </div>
       </div>
 

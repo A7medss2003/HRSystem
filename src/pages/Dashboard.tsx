@@ -141,29 +141,39 @@ export default function Dashboard({ user }: { user?: { role: string; username: s
             const baseDate = today.getFullYear() === 2026 ? today : new Date('2026-07-09');
             const baseZero = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
             
-            employees.forEach(emp => {
-              if (emp.contracts && emp.contracts.length > 0) {
-                emp.contracts.forEach(contract => {
-                  if (contract.endDate && contract.status === 'ساري') {
-                    const end = new Date(contract.endDate);
-                    const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-                    const diffTime = endZero.getTime() - baseZero.getTime();
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    
-                    if (diffDays <= 30) {
-                      expiringContracts.push({
-                        employeeName: emp.fullName,
-                        employeeId: emp.employeeId,
-                        contractType: contract.type,
-                        endDate: contract.endDate,
-                        diffDays,
-                        empId: emp.id
-                      });
+            employees
+              .filter(emp => emp.status === 'نشط' || !emp.status)
+              .forEach(emp => {
+                if (emp.contracts && emp.contracts.length > 0) {
+                  const validContracts = emp.contracts.filter(c => c && c.endDate && c.status === 'ساري');
+                  if (validContracts.length > 0) {
+                    const latest = [...validContracts].sort(
+                      (a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime()
+                    )[0];
+
+                    if (latest && latest.endDate) {
+                      const end = new Date(latest.endDate);
+                      if (!isNaN(end.getTime())) {
+                        const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+                        const diffTime = endZero.getTime() - baseZero.getTime();
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        
+                        // Only flag contracts expiring in <= 30 days or expired within the last 30 days
+                        if (diffDays <= 30 && diffDays >= -30) {
+                          expiringContracts.push({
+                            employeeName: emp.fullName,
+                            employeeId: emp.employeeId,
+                            contractType: latest.type,
+                            endDate: latest.endDate,
+                            diffDays,
+                            empId: emp.id
+                          });
+                        }
+                      }
                     }
                   }
-                });
-              }
-            });
+                }
+              });
 
             expiringContracts.sort((a, b) => a.diffDays - b.diffDays);
 

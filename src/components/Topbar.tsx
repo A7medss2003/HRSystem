@@ -98,8 +98,10 @@ export default function Topbar({
   // Base date for accurate real-time timeline comparisons
   const baseDate = new Date();
 
-  // Generate notifications based on business logic
-  const generatedNotifications = (() => {
+  const [filterTab, setFilterTab] = useState<'all' | 'high'>('all');
+
+  // Generate notifications with smart memoization to prevent lag and CPU spikes
+  const generatedNotifications = React.useMemo(() => {
     const list: {
       id: string;
       type: 'contract_expire' | 'contract_expired' | 'leave_active' | 'leave_upcoming' | 'leave_pending' | 'doc_expire' | 'doc_expired' | 'system';
@@ -115,55 +117,105 @@ export default function Topbar({
     const canManageEmployees = isAdmin || (user.permissions || []).includes('manage_employees');
     const canManageLeaves = isAdmin || (user.permissions || []).includes('manage_leaves');
 
-    // 1. Scan employee contracts (excluding manager if regular user)
+    const now = new Date();
+    const baseZero = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // 1. Scan active employee contracts (only latest contract, ignore ancient historical contracts)
     if (canManageEmployees) {
-      employees.filter(emp => isAdmin || !isManagerEmployee(emp)).forEach(emp => {
-        emp.contracts?.forEach(contract => {
-          if (contract.endDate) {
-            const end = new Date(contract.endDate);
-            const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-            const baseZero = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
-            
-            const diffTime = endZero.getTime() - baseZero.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      employees
+        .filter(emp => (isAdmin || !isManagerEmployee(emp)) && (emp.status === 'نشط' || !emp.status))
+        .forEach(emp => {
+          if (emp.contracts && emp.contracts.length > 0) {
+            const validContracts = emp.contracts.filter(c => c && c.endDate);
+            if (validContracts.length > 0) {
+              const latestContract = [...validContracts].sort(
+                (a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime()
+              )[0];
+
+              if (latestContract && latestContract.endDate) {
+                const end = new Date(latestContract.endDate);
+                if (!isNaN(end.getTime())) {
+                  const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+                  const diffTime = endZero.getTime() - baseZero.getTime();
+                  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                  if (diffDays >= 0 && diffDays <= 30) {
+                    list.push({
+                      id: `contract-warn-${latestContract.id || emp.id}`,
+                      type: 'contract_expire',
+                      title: 'اقتراب انتهاء عقد عمل',
+                      description: `عقد الموظف (${emp.fullName}) ينتهي خلال ${diffDays} يوم في ${latestContract.endDate}`,
+                      date: latestContract.endDate,
+                      severity: diffDays <= 7 ? 'high' : 'medium',
+                      employeeId: emp.id,
+                      linkMenu: 'employees'
+                    });
+                  } else if (diffDays < 0 && diffDays >= -30) {
+                    // Only flag contracts expired within the last 30 days
+                    list.push({
+                      id: `contract-exp-${latestContract.id || emp.id}`,
+                      type: 'contract_expired',
+                      title: 'عقد عمل منتهي الصلاحية',
+                      description: `عقد الموظف (${emp.fullName}) انتهى في تاريخ ${latestContract.endDate}`,
+                      date: latestContract.endDate,
+                      severity: 'high',
+                      employeeId: emp.id,
+                      linkMenu: 'employees'
+                    });
+                  }
+                }
+              }
+            }
+          }
+
+          // 2. Scan official documents for active employees (within last 30 days or next 30 days)
+          const checkDoc = (docTitle: string, expiryStr?: string) => {
+            if (!expiryStr) return;
+            const exp = new Date(expiryStr);
+            if (isNaN(exp.getTime())) return;
+            const expZero = new Date(exp.getFullYear(), exp.getMonth(), exp.getDate());
+            const diffDays = Math.ceil((expZero.getTime() - baseZero.getTime()) / (1000 * 60 * 60 * 24));
 
             if (diffDays >= 0 && diffDays <= 30) {
               list.push({
-                id: `contract-warn-${contract.id}`,
-                type: 'contract_expire',
-                title: 'اقتراب انتهاء عقد عمل',
-                description: `عقد الموظف (${emp.fullName}) ينتهي خلال ${diffDays} يوم في ${contract.endDate}`,
-                date: contract.endDate,
+                id: `doc-warn-${emp.id}-${docTitle}`,
+                type: 'doc_expire',
+                title: `اقتراب انتهاء ${docTitle}`,
+                description: `${docTitle} للموظف (${emp.fullName}) ينتهي خلال ${diffDays} يوم في ${expiryStr}`,
+                date: expiryStr,
                 severity: diffDays <= 7 ? 'high' : 'medium',
                 employeeId: emp.id,
                 linkMenu: 'employees'
               });
-            } else if (diffDays < 0) {
+            } else if (diffDays < 0 && diffDays >= -30) {
               list.push({
-                id: `contract-exp-${contract.id}`,
-                type: 'contract_expired',
-                title: 'عقد عمل منتهي الصلاحية',
-                description: `عقد الموظف (${emp.fullName}) انتهى في تاريخ ${contract.endDate}`,
-                date: contract.endDate,
+                id: `doc-exp-${emp.id}-${docTitle}`,
+                type: 'doc_expired',
+                title: `${docTitle} منتهي الصلاحية`,
+                description: `${docTitle} للموظف (${emp.fullName}) انتهى في تاريخ ${expiryStr}`,
+                date: expiryStr,
                 severity: 'high',
                 employeeId: emp.id,
                 linkMenu: 'employees'
               });
             }
-          }
+          };
+
+          checkDoc('التأشيرة', emp.visaExpiry);
+          checkDoc('تصريح العمل', emp.permitExpiry);
         });
-      });
     }
 
-    // 2. Scan leaves
+    // 3. Scan current and pending leaves
     if (canManageLeaves) {
       leaves.forEach(leave => {
+        if (!leave.startDate || !leave.endDate) return;
         const start = new Date(leave.startDate);
         const end = new Date(leave.endDate);
-        
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
+
         const startZero = new Date(start.getFullYear(), start.getMonth(), start.getDate());
         const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-        const baseZero = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
         const todayTime = baseZero.getTime();
         const startTime = startZero.getTime();
         const endTime = endZero.getTime();
@@ -207,49 +259,13 @@ export default function Topbar({
       });
     }
 
-    // 3. Scan employee official documents expiration (visa, work permit)
-    if (canManageEmployees) {
-      employees.filter(emp => isAdmin || !isManagerEmployee(emp)).forEach(emp => {
-        const checkDoc = (docTitle: string, expiryStr?: string) => {
-          if (!expiryStr) return;
-          const exp = new Date(expiryStr);
-          if (isNaN(exp.getTime())) return;
-          const expZero = new Date(exp.getFullYear(), exp.getMonth(), exp.getDate());
-          const baseZero = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
-          const diffDays = Math.ceil((expZero.getTime() - baseZero.getTime()) / (1000 * 60 * 60 * 24));
-
-          if (diffDays >= 0 && diffDays <= 30) {
-            list.push({
-              id: `doc-warn-${emp.id}-${docTitle}`,
-              type: 'doc_expire',
-              title: `اقتراب انتهاء ${docTitle}`,
-              description: `${docTitle} للموظف (${emp.fullName}) ينتهي خلال ${diffDays} يوم في ${expiryStr}`,
-              date: expiryStr,
-              severity: diffDays <= 7 ? 'high' : 'medium',
-              employeeId: emp.id,
-              linkMenu: 'employees'
-            });
-          } else if (diffDays < 0) {
-            list.push({
-              id: `doc-exp-${emp.id}-${docTitle}`,
-              type: 'doc_expired',
-              title: `${docTitle} منتهي الصلاحية`,
-              description: `${docTitle} للموظف (${emp.fullName}) انتهى في تاريخ ${expiryStr}`,
-              date: expiryStr,
-              severity: 'high',
-              employeeId: emp.id,
-              linkMenu: 'employees'
-            });
-          }
-        };
-
-        checkDoc('التأشيرة', emp.visaExpiry);
-        checkDoc('تصريح العمل', emp.permitExpiry);
-      });
-    }
-
     return list.filter(item => !dismissedIds.includes(item.id));
-  })();
+  }, [employees, leaves, dismissedIds, user]);
+
+  const highSeverityCount = generatedNotifications.filter(n => n.severity === 'high').length;
+  const displayedNotifications = filterTab === 'high' 
+    ? generatedNotifications.filter(n => n.severity === 'high') 
+    : generatedNotifications;
 
   return (
     <>
@@ -312,37 +328,97 @@ export default function Topbar({
           >
             <Bell size={20} />
             {generatedNotifications.length > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold flex items-center justify-center rounded-full border-2 border-white animate-pulse">
-                {generatedNotifications.length}
+              <span className={`absolute -top-1 -right-1 px-1.5 h-[18px] min-w-[18px] text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-white shadow-xs ${
+                highSeverityCount > 0 ? 'bg-red-500 animate-pulse ring-2 ring-red-300/50' : 'bg-blue-600'
+              }`}>
+                {generatedNotifications.length > 99 ? '99+' : generatedNotifications.length}
               </span>
             )}
           </button>
 
           {showNotifications && (
             <div className="absolute left-0 mt-3 w-96 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50 animate-in fade-in duration-200" style={{ transformOrigin: 'top left' }}>
-              <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+              <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                  <ShieldAlert className="text-blue-600 animate-bounce" size={18} />
-                  <h4 className="font-bold text-slate-800 text-sm">التنبيهات والإشعارات النشطة</h4>
+                  <ShieldAlert className={highSeverityCount > 0 ? "text-red-500 animate-bounce" : "text-blue-600"} size={18} />
+                  <div>
+                    <h4 className="font-bold text-slate-800 text-sm">التنبيهات والإشعارات النشطة</h4>
+                    {highSeverityCount > 0 && (
+                      <span className="text-[10px] text-red-600 font-bold block">
+                        يوجد {highSeverityCount} تنبيهات حمراء عاجلة
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {generatedNotifications.length > 0 && (
                   <button 
+                    type="button"
                     onClick={() => {
                       setDismissedIds(prev => Array.from(new Set([...prev, ...generatedNotifications.map(n => n.id)])));
-                      toast('تم تعيين جميع التنبيهات كمقروءة بنجاح', 'success');
+                      toast('تم مسح وحل جميع البلاغات والتنبيهات بنجاح (العدد 0) ✅', 'success');
                     }}
-                    className="text-xs text-blue-600 hover:text-blue-800 font-semibold transition-colors cursor-pointer"
+                    className="text-xs text-rose-700 hover:text-white font-bold transition-all cursor-pointer bg-rose-50 hover:bg-rose-600 px-2.5 py-1.5 rounded-lg border border-rose-200 shadow-2xs"
+                    title="تصفير وحل كافة البلاغات والتنبيهات دفعة واحدة"
                   >
-                    تحديد الكل كمقروء
+                    مسح وحل الكل ({generatedNotifications.length})
                   </button>
                 )}
               </div>
 
+              {/* Filter Tabs for All vs High (Red) */}
+              {generatedNotifications.length > 0 && (
+                <div className="flex items-center justify-between border-b border-slate-100 bg-white px-3 py-1.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFilterTab('all')}
+                      className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                        filterTab === 'all'
+                          ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs'
+                          : 'text-slate-500 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span>الكل</span>
+                      <span className="mr-1.5 font-mono">({generatedNotifications.length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFilterTab('high')}
+                      className={`px-3 py-1 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        filterTab === 'high'
+                          ? 'bg-red-50 text-red-700 border border-red-200 shadow-2xs'
+                          : 'text-slate-500 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-red-500 inline-block animate-ping" />
+                      <span>الحمراء العاجلة</span>
+                      <span className="font-mono">({highSeverityCount})</span>
+                    </button>
+                  </div>
+
+                  {filterTab === 'high' && highSeverityCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const highIds = generatedNotifications.filter(n => n.severity === 'high').map(n => n.id);
+                        setDismissedIds(prev => Array.from(new Set([...prev, ...highIds])));
+                        toast(`تم حل ومسح الـ ${highIds.length} تنبيهات الحمراء بنجاح ✅`, 'success');
+                      }}
+                      className="text-[11px] font-bold text-red-600 hover:text-red-800 hover:underline cursor-pointer"
+                    >
+                      حل الحمراء فقط
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div className="max-h-[360px] overflow-y-auto divide-y divide-slate-100">
-                {generatedNotifications.map((notif) => (
+                {displayedNotifications.map((notif) => (
                   <div 
                     key={notif.id}
-                    className="p-4 hover:bg-slate-50/70 transition-colors flex gap-3 relative group"
+                    className={`p-3.5 hover:bg-slate-50/70 transition-colors flex gap-3 relative group ${
+                      notif.severity === 'high' ? 'bg-red-50/30' : ''
+                    }`}
                   >
                     <div 
                       className="flex-1 cursor-pointer" 
@@ -354,7 +430,7 @@ export default function Topbar({
                       }}
                     >
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`w-2 h-2 rounded-full ${
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${
                           notif.severity === 'high' ? 'bg-red-500 animate-ping' :
                           notif.severity === 'medium' ? 'bg-amber-500' : 'bg-blue-500'
                         }`} />
@@ -380,11 +456,11 @@ export default function Topbar({
                   </div>
                 ))}
 
-                {generatedNotifications.length === 0 && (
+                {displayedNotifications.length === 0 && (
                   <div className="p-8 text-center text-slate-500 flex flex-col items-center justify-center gap-2">
                     <CheckSquare className="text-emerald-500" size={32} />
                     <p className="text-sm font-semibold text-slate-700">لا توجد تنبيهات نشطة حالياً</p>
-                    <p className="text-xs text-slate-400">عقود الموظفين وإجازاتهم تبدو في حالة ممتازة!</p>
+                    <p className="text-xs text-slate-400">كافة عقود الموظفين ووثائقهم وإجازاتهم سليمة تماماً!</p>
                   </div>
                 )}
               </div>

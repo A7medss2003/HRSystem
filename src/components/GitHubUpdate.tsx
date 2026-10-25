@@ -131,11 +131,16 @@ export const GitHubUpdate: React.FC<GitHubUpdateProps> = ({
     setUpdateSuccess(false);
 
     try {
-      const res = await githubUpdateService.checkUpdates({
-        repo: targetRepo,
-        branch: targetBranch,
-        token: targetToken
-      });
+      const res = await Promise.race([
+        githubUpdateService.checkUpdates({
+          repo: targetRepo,
+          branch: targetBranch,
+          token: targetToken
+        }),
+        new Promise<any>((_, reject) => 
+          setTimeout(() => reject(new Error('انتهت مهلة فحص التحديثات (15 ثانية). يرجى التحقق من الاتصال بالإنترنت.')), 15000)
+        )
+      ]);
 
       setCheckResult(res);
 
@@ -190,11 +195,16 @@ export const GitHubUpdate: React.FC<GitHubUpdateProps> = ({
         ]);
       }, 1500);
 
-      const res = await githubUpdateService.applyUpdate({
-        repo: repo.trim(),
-        branch: branch.trim() || 'main',
-        token: token.trim()
-      });
+      const res = await Promise.race([
+        githubUpdateService.applyUpdate({
+          repo: repo.trim(),
+          branch: branch.trim() || 'main',
+          token: token.trim()
+        }),
+        new Promise<any>((_, reject) => 
+          setTimeout(() => reject(new Error('انتهت مهلة التحديث (45 ثانية). يرجى التحقق من اتصال الإنترنت.')), 45000)
+        )
+      ]);
 
       clearTimeout(timer1);
       clearTimeout(timer2);
@@ -237,7 +247,7 @@ export const GitHubUpdate: React.FC<GitHubUpdateProps> = ({
       toast(`خطأ أثناء التحديث: ${err.message}`, 'error');
       setUpdateLogs(prev => [
         ...prev,
-        { time: new Date().toLocaleTimeString('ar-EG'), message: `خطأ فادح: ${err.message}` }
+        { time: new Date().toLocaleTimeString('ar-EG'), message: `خطأ: ${err.message}` }
       ]);
     } finally {
       setIsUpdating(false);
@@ -513,7 +523,8 @@ export const GitHubUpdate: React.FC<GitHubUpdateProps> = ({
             type="button"
             onClick={handleCheckUpdates}
             disabled={isChecking || isUpdating}
-            className="w-full sm:flex-1 py-3.5 px-5 bg-white hover:bg-slate-50 border-2 border-blue-600 text-blue-700 font-bold rounded-xl flex items-center justify-center gap-2.5 cursor-pointer transition-all shadow-xs disabled:opacity-50 text-sm hover:shadow-md"
+            title="فحص توفر إصدارات أحدث على GitHub ومقارنتها بالإصدار الحالي بأمان تام"
+            className="w-full sm:flex-1 py-3.5 px-5 bg-white hover:bg-slate-50 border-2 border-blue-600 text-blue-700 font-bold rounded-xl flex items-center justify-center gap-2.5 cursor-pointer transition-all shadow-xs disabled:opacity-50 text-sm hover:shadow-md active:scale-[0.99]"
           >
             <RefreshCw size={17} className={isChecking ? 'animate-spin text-blue-600' : 'text-blue-600'} />
             <span>{isChecking ? 'جاري التحقق من GitHub...' : 'التحقق من التحديثات'}</span>
@@ -524,7 +535,8 @@ export const GitHubUpdate: React.FC<GitHubUpdateProps> = ({
             type="button"
             onClick={handleDownloadAndApply}
             disabled={isChecking || isUpdating || !repo.trim()}
-            className={`w-full sm:flex-1 py-3.5 px-5 font-bold rounded-xl flex items-center justify-center gap-2.5 cursor-pointer transition-all shadow-md disabled:opacity-50 text-sm ${
+            title="تنزيل وتثبيت الملفات الجديدة مع الحماية التلقائية الكاملة من الشاشة الشفافة أو التعليق"
+            className={`w-full sm:flex-1 py-3.5 px-5 font-bold rounded-xl flex items-center justify-center gap-2.5 cursor-pointer transition-all shadow-md disabled:opacity-50 text-sm active:scale-[0.99] ${
               checkResult?.hasUpdate
                 ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white ring-4 ring-blue-500/20'
                 : 'bg-slate-900 hover:bg-black text-white'
@@ -533,7 +545,7 @@ export const GitHubUpdate: React.FC<GitHubUpdateProps> = ({
             {isUpdating ? (
               <>
                 <RefreshCw size={17} className="animate-spin text-white" />
-                <span>جاري تحميل وتثبيت الملفات...</span>
+                <span>جاري تنزيل الملفات بأمان...</span>
               </>
             ) : (
               <>
@@ -579,7 +591,10 @@ export const GitHubUpdate: React.FC<GitHubUpdateProps> = ({
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                   <button
                     type="button"
-                    onClick={() => githubUpdateService.reloadApp()}
+                    onClick={async () => {
+                      toast('جاري تحديث الواجهة وتطبيق التعديلات...', 'info');
+                      await githubUpdateService.reloadApp();
+                    }}
                     className="flex-1 sm:flex-initial px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors"
                   >
                     <RotateCcw size={13} />
@@ -587,7 +602,10 @@ export const GitHubUpdate: React.FC<GitHubUpdateProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => githubUpdateService.relaunchApp()}
+                    onClick={async () => {
+                      toast('جاري إعادة تشغيل البرنامج...', 'info');
+                      await githubUpdateService.relaunchApp();
+                    }}
                     className="flex-1 sm:flex-initial px-3.5 py-2 bg-slate-900 hover:bg-black text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors"
                   >
                     <RefreshCw size={13} />
@@ -598,6 +616,27 @@ export const GitHubUpdate: React.FC<GitHubUpdateProps> = ({
             )}
           </div>
         )}
+
+        {/* Emergency Recovery Footer */}
+        <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+          <div className="flex items-center gap-1.5">
+            <ShieldCheck size={14} className="text-emerald-600" />
+            <span>حماية تلقائية: في حال واجهت أي تعليق أو بطء، يمكنك العودة فوراً للنسخة الأصلية</span>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              if (window.confirm('هل تريد إلغاء التحديثات المنزلة والعودة إلى النسخة الأصلية للبرنامج فوراً؟ لن تتأثر بيانات الموظفين نهائياً.')) {
+                toast('جاري استعادة النسخة الأصلية وتفريغ التحديثات...', 'info');
+                await githubUpdateService.resetToOriginal();
+              }
+            }}
+            className="text-rose-600 hover:text-rose-800 font-bold hover:underline flex items-center gap-1 cursor-pointer transition-colors"
+          >
+            <RotateCcw size={12} />
+            <span>استعادة النسخة الأصلية للبرنامج</span>
+          </button>
+        </div>
 
       </div>
     </div>

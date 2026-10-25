@@ -108,13 +108,35 @@ function loadScannerDriver() {
   return require('./src/server/scannerDriver.cjs');
 }
 
+function isValidDist(dirPath) {
+  try {
+    if (!fs.existsSync(dirPath)) return false;
+    const indexPath = path.join(dirPath, 'index.html');
+    if (!fs.existsSync(indexPath)) return false;
+    const stat = fs.statSync(indexPath);
+    if (stat.size < 200) return false;
+
+    const assetsPath = path.join(dirPath, 'assets');
+    if (!fs.existsSync(assetsPath)) return false;
+    const files = fs.readdirSync(assetsPath);
+    const hasJsBundle = files.some(f => f.endsWith('.js') && fs.statSync(path.join(assetsPath, f)).size > 20000);
+    return hasJsBundle;
+  } catch (e) {
+    return false;
+  }
+}
+
 function getAppDistPath() {
   try {
     const updatedDist = path.join(app.getPath('userData'), 'app_update', 'dist');
-    const updatedIndex = path.join(updatedDist, 'index.html');
-    if (fs.existsSync(updatedIndex)) {
-      console.log('Running from user downloaded update dist:', updatedDist);
+    if (isValidDist(updatedDist)) {
+      console.log('Running from verified user downloaded update dist:', updatedDist);
       return updatedDist;
+    } else if (fs.existsSync(updatedDist)) {
+      console.warn('Update dist incomplete or invalid, safely removing corrupt folder...');
+      try {
+        fs.rmSync(updatedDist, { recursive: true, force: true });
+      } catch (rmErr) {}
     }
   } catch (e) {}
   return path.join(__dirname, 'dist');
@@ -345,8 +367,8 @@ function createWindow() {
     height: 800,
     frame: false,
     autoHideMenuBar: true,
-    transparent: true,
-    backgroundColor: '#00000000',
+    transparent: false,
+    backgroundColor: '#f8fafc',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -359,6 +381,22 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.warn(`Window failed to load (${errorCode}): ${errorDescription}. Falling back to original factory dist...`);
+    const fallbackPath = path.join(__dirname, 'dist', 'index.html');
+    if (fs.existsSync(fallbackPath) && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.loadFile(fallbackPath);
+    }
+  });
+
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    console.warn('Renderer process crashed or terminated:', details);
+    const fallbackPath = path.join(__dirname, 'dist', 'index.html');
+    if (fs.existsSync(fallbackPath) && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.loadFile(fallbackPath);
+    }
   });
 
   if (process.env.NODE_ENV === 'development') {
@@ -547,20 +585,26 @@ ipcMain.handle('github:get-version', () => {
   }
 });
 
-ipcMain.handle('app:reload-window', async () => {
+ipcMain.handle('app:reload-window', () => {
   try {
     if (mainWindow) {
-      if (process.env.NODE_ENV === 'development') {
-        mainWindow.reload();
-      } else {
-        const distPath = getAppDistPath();
-        const targetIndex = path.join(distPath, 'index.html');
-        console.log('Reloading active window from:', targetIndex);
+      setTimeout(async () => {
         try {
-          await mainWindow.webContents.session.clearCache();
-        } catch (cErr) {}
-        mainWindow.loadFile(targetIndex);
-      }
+          if (process.env.NODE_ENV === 'development') {
+            mainWindow.reload();
+          } else {
+            const distPath = getAppDistPath();
+            const targetIndex = path.join(distPath, 'index.html');
+            console.log('Reloading active window from:', targetIndex);
+            try {
+              await mainWindow.webContents.session.clearCache();
+            } catch (cErr) {}
+            mainWindow.loadFile(targetIndex);
+          }
+        } catch (e) {
+          mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+        }
+      }, 100);
       return { success: true };
     }
   } catch (err) {
@@ -572,7 +616,34 @@ ipcMain.handle('app:reload-window', async () => {
 ipcMain.handle('app:relaunch', () => {
   try {
     app.relaunch();
-    app.exit(0);
+    setTimeout(() => {
+      app.exit(0);
+    }, 200);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('app:reset-to-original', () => {
+  try {
+    const updateDir = path.join(app.getPath('userData'), 'app_update');
+    if (fs.existsSync(updateDir)) {
+      try { fs.rmSync(updateDir, { recursive: true, force: true }); } catch (e) {}
+    }
+    const versionFile = path.join(app.getPath('userData'), 'github-version.json');
+    if (fs.existsSync(versionFile)) {
+      try { fs.rmSync(versionFile, { force: true }); } catch (e) {}
+    }
+    if (mainWindow) {
+      setTimeout(async () => {
+        try {
+          await mainWindow.webContents.session.clearCache();
+        } catch (e) {}
+        mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+      }, 100);
+    }
+    return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
   }

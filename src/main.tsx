@@ -3,6 +3,42 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
+// تصفية وكتم الرسائل والإخطارات المكررة الصادرة من أجهزة وماسحات الباركود والكاميرا ومحولات الإدخال
+if (typeof window !== 'undefined') {
+  const isNoisyAdapterLog = (args: any[]) => {
+    try {
+      const text = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a || ''))).join(' ').toLowerCase();
+      return (
+        text.includes('[rbc]') ||
+        text.includes('rbc') ||
+        text.includes('sees no video') ||
+        text.includes('falling back to keyboard') ||
+        text.includes('primary adapter generic')
+      );
+    } catch {
+      return false;
+    }
+  };
+
+  const origDebug = console.debug;
+  console.debug = (...args: any[]) => {
+    if (isNoisyAdapterLog(args)) return;
+    origDebug.apply(console, args);
+  };
+
+  const origWarn = console.warn;
+  console.warn = (...args: any[]) => {
+    if (isNoisyAdapterLog(args)) return;
+    origWarn.apply(console, args);
+  };
+
+  const origLog = console.log;
+  console.log = (...args: any[]) => {
+    if (isNoisyAdapterLog(args)) return;
+    origLog.apply(console, args);
+  };
+}
+
 // ترحيل البيانات التلقائي من الإصدارات السابقة لضمان عدم ضياع أي سجل للموظفين
 if (typeof window !== 'undefined' && window.localStorage) {
   try {
@@ -22,8 +58,12 @@ if (typeof window !== 'undefined' && window.localStorage) {
   }
 }
 
+import ErrorBoundary from './components/ErrorBoundary.tsx';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );
