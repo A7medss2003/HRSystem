@@ -1,10 +1,10 @@
 /**
- * System Peripheral Scanner Driver Module (SANE / TWAIN / WIA)
- * Communicates with locally installed scanners (e.g., HP ScanJet 2400, Canon LiDE, Epson Perfection)
- * via native OS interfaces:
- * - Windows: WIA (Windows Image Acquisition) / TWAIN through PowerShell & COM automation
- * - Linux: SANE (Scanner Access Now Easy) through scanimage CLI
- * - Fallback: Hardware peripheral bridge with device parameter querying
+ * System Peripheral Scanner Driver Module (NAPS2 / WIA / TWAIN / SANE)
+ * Communicates with locally connected scanners (HP ScanJet, Canon LiDE, Epson, Brother, etc.)
+ * via:
+ * 1. NAPS2.Console.exe (Universal scanner CLI supporting any WIA/TWAIN scanner to PDF/JPEG)
+ * 2. Windows WIA (Windows Image Acquisition via PowerShell COM automation)
+ * 3. Linux SANE (Scanner Access Now Easy through scanimage CLI)
  */
 
 const { exec, spawn } = require('child_process');
@@ -12,9 +12,44 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 
+function getElectronApp() {
+  try {
+    const electron = require('electron');
+    return electron.app || (electron.remote && electron.remote.app) || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Searches for NAPS2.Console.exe in all standard and portable locations
+ */
+function findNaps2Path() {
+  const electronApp = getElectronApp();
+  const appPath = electronApp && typeof electronApp.getAppPath === 'function' ? electronApp.getAppPath() : process.cwd();
+
+  const candidates = [
+    path.join(__dirname, 'bin', 'NAPS2.Console.exe'),
+    path.join(__dirname, '..', '..', 'bin', 'NAPS2.Console.exe'),
+    path.join(process.cwd(), 'bin', 'NAPS2.Console.exe'),
+    path.join(appPath, 'bin', 'NAPS2.Console.exe'),
+    'C:\\Program Files\\NAPS2\\NAPS2.Console.exe',
+    'C:\\Program Files (x86)\\NAPS2\\NAPS2.Console.exe',
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'NAPS2', 'NAPS2.Console.exe')
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
 /**
  * Detect locally installed scanners directly from the operating system
- * (Windows WIA / DeviceManager or Linux SANE) - NO hardcoded lists!
  */
 async function detectLocalScanners() {
   const isWindows = os.platform() === 'win32';
@@ -22,9 +57,39 @@ async function detectLocalScanners() {
 
   let discovered = [];
 
-  if (isWindows) {
+  // 1. Check if NAPS2 is available for device enumeration
+  const naps2Path = findNaps2Path();
+  if (naps2Path) {
     try {
-      // Query Windows Image Acquisition (WIA) DeviceManager via PowerShell COM
+      const naps2List = await new Promise((resolve) => {
+        exec(`"${naps2Path}" --listdevices`, { timeout: 4000 }, (err, stdout) => {
+          if (err || !stdout) return resolve([]);
+          const lines = stdout.split('\n').map(l => l.trim()).filter(Boolean);
+          const devices = lines.map((name, idx) => ({
+            id: `naps2-${idx}`,
+            name: name,
+            vendor: 'Universal Scanner',
+            model: name,
+            protocol: 'TWAIN / WIA',
+            driverName: 'NAPS2.Console CLI Driver',
+            status: 'online',
+            isDefault: idx === 0,
+            supportedResolutions: [150, 200, 300, 600],
+            supportedModes: ['color', 'grayscale', 'bw']
+          }));
+          resolve(devices);
+        });
+      });
+
+      if (naps2List && naps2List.length > 0) {
+        discovered = naps2List;
+      }
+    } catch (e) {}
+  }
+
+  // 2. Query Windows WIA DeviceManager
+  if (discovered.length === 0 && isWindows) {
+    try {
       const psCommand = `powershell -NoProfile -Command "
         try {
           $devMgr = New-Object -ComObject WIA.DeviceManager;
@@ -76,9 +141,11 @@ async function detectLocalScanners() {
     } catch (e) {
       console.warn('WIA scanner detection error:', e.message);
     }
-  } else if (isLinux) {
+  }
+
+  // 3. Query Linux SANE
+  if (discovered.length === 0 && isLinux) {
     try {
-      // Query Linux SANE backend via scanimage -L
       const saneResult = await new Promise((resolve) => {
         exec('scanimage -L', { timeout: 3000 }, (error, stdout) => {
           if (error || !stdout) return resolve([]);
@@ -121,35 +188,99 @@ async function detectLocalScanners() {
     }
   }
 
-  // إرجاع الأجهزة المتصلة فعلياً فقط بدون إضافة أسماء وهمية مسبقة
   return discovered;
 }
 
 /**
- * Execute real scan acquisition using WIA / SANE or driver emulation
+ * Executes scanner capture via NAPS2.Console CLI (Reference Implementation)
+ * Auto-detects any connected scanner, saves as PDF or JPEG, and converts to Base64
+ */
+async function scanWithNaps2(options = {}) {
+  const naps2Path = findNaps2Path();
+  if (!naps2Path) return null;
+
+  const electronApp = getElectronApp();
+  const baseDir = electronApp ? electronApp.getPath('userData') : os.tmpdir();
+  const format = options.format === 'jpg' || options.format === 'jpeg' ? 'jpg' : 'pdf';
+  const outputFilePath = path.join(baseDir, `scan_${Date.now()}.${format}`);
+
+  let command = `"${naps2Path}" -o "${outputFilePath}" --force`;
+  if (options.dpi || options.resolution) {
+    command += ` --dpi ${options.dpi || options.resolution}`;
+  }
+  if (options.deviceName && !options.deviceName.includes('(')) {
+    command += ` --device "${options.deviceName}"`;
+  }
+
+  return new Promise((resolve) => {
+    exec(command, { timeout: 45000 }, (error, stdout, stderr) => {
+      if (error) {
+        console.warn(`NAPS2 Scan Notice: ${error.message}`);
+        return resolve(null);
+      }
+
+      if (fs.existsSync(outputFilePath) && fs.statSync(outputFilePath).size > 200) {
+        try {
+          const fileBuffer = fs.readFileSync(outputFilePath);
+          fs.unlinkSync(outputFilePath); // Clean up temp file
+
+          const mimeType = format === 'pdf' ? 'application/pdf' : 'image/jpeg';
+          const base64Data = fileBuffer.toString('base64');
+          return resolve({
+            success: true,
+            data: base64Data,
+            mimeType,
+            dataUrl: `data:${mimeType};base64,${base64Data}`,
+            driver: 'NAPS2.Console.exe',
+            metadata: {
+              driver: 'NAPS2 Auto-Detecting Scanner CLI',
+              format,
+              sizeBytes: fileBuffer.length,
+              timestamp: new Date().toISOString()
+            }
+          });
+        } catch (readErr) {
+          console.warn('Error reading NAPS2 output file:', readErr);
+          return resolve(null);
+        }
+      }
+      resolve(null);
+    });
+  });
+}
+
+/**
+ * Execute real scan acquisition using NAPS2, Windows WIA, or Linux SANE
  */
 async function acquireScanFromDevice(options = {}) {
   const {
     deviceId = '',
     resolution = 300,
     colorMode = 'color',
-    docType = 'وثيقة رسمية'
+    docType = 'وثيقة رسمية',
+    format = 'pdf'
   } = options;
 
   const isWindows = os.platform() === 'win32';
   const isLinux = os.platform() === 'linux';
-
-  // Find target device profile
-  const devices = await detectLocalScanners();
-  const targetDevice = (devices.find(d => d.id === deviceId) || devices[0]) || {
-    id: 'scanner-device',
-    name: 'الماسح الضوئي المحلي',
-    driverName: 'WIA / SANE Driver'
-  };
-
   const startTime = Date.now();
 
-  // Attempt Real Native Windows WIA Scan if running on Windows
+  // 1. Primary Strategy: Try NAPS2.Console.exe (Fast, Auto-detects all scanners, direct PDF/JPEG output)
+  try {
+    const naps2Result = await scanWithNaps2({
+      dpi: resolution,
+      colorMode,
+      format,
+      deviceId
+    });
+    if (naps2Result && naps2Result.success) {
+      return naps2Result;
+    }
+  } catch (naps2Err) {
+    console.warn('NAPS2 execution fell back to native driver:', naps2Err.message);
+  }
+
+  // 2. Secondary Strategy: Native Windows WIA PowerShell Automation
   if (isWindows) {
     try {
       const tempOutPath = path.join(os.tmpdir(), `hr_scan_${Date.now()}.jpg`);
@@ -167,7 +298,7 @@ async function acquireScanFromDevice(options = {}) {
       "`;
 
       const result = await new Promise((resolve) => {
-        exec(psScanScript, { timeout: 15000 }, (error, stdout) => {
+        exec(psScanScript, { timeout: 20000 }, (error, stdout) => {
           if (!error && stdout.includes('SUCCESS') && fs.existsSync(tempOutPath)) {
             const buf = fs.readFileSync(tempOutPath);
             fs.unlinkSync(tempOutPath);
@@ -179,14 +310,17 @@ async function acquireScanFromDevice(options = {}) {
       });
 
       if (result) {
+        const rawBase64 = result.split(',')[1] || '';
         return {
           success: true,
+          data: rawBase64,
+          mimeType: 'image/jpeg',
           dataUrl: result,
           metadata: {
-            deviceId: targetDevice.id,
-            deviceName: targetDevice.name,
+            deviceId: 'wia-device',
+            deviceName: 'الماسح الضوئي (Windows WIA)',
             protocol: 'WIA',
-            driver: targetDevice.driverName,
+            driver: 'wiaaut.dll (Windows Image Acquisition)',
             resolutionDpi: resolution,
             colorMode: colorMode,
             scanDurationMs: Date.now() - startTime,
@@ -195,18 +329,18 @@ async function acquireScanFromDevice(options = {}) {
         };
       }
     } catch (e) {
-      console.warn('Native WIA scan failed, falling back to driver bridge:', e.message);
+      console.warn('Native WIA scan notice:', e.message);
     }
   }
 
-  // Attempt Real Native Linux SANE Scan if scanimage is installed
+  // 3. Tertiary Strategy: Native Linux SANE scanimage
   if (isLinux) {
     try {
       const tempOutPath = path.join(os.tmpdir(), `hr_scan_${Date.now()}.jpg`);
       const saneCmd = `scanimage --resolution ${resolution} --mode ${colorMode === 'bw' ? 'Lineart' : (colorMode === 'grayscale' ? 'Gray' : 'Color')} --format=jpeg > "${tempOutPath}"`;
 
       const saneSuccess = await new Promise((resolve) => {
-        exec(saneCmd, { timeout: 15000 }, (error) => {
+        exec(saneCmd, { timeout: 20000 }, (error) => {
           if (!error && fs.existsSync(tempOutPath) && fs.statSync(tempOutPath).size > 100) {
             resolve(true);
           } else {
@@ -218,14 +352,16 @@ async function acquireScanFromDevice(options = {}) {
       if (saneSuccess) {
         const buf = fs.readFileSync(tempOutPath);
         fs.unlinkSync(tempOutPath);
+        const rawBase64 = buf.toString('base64');
         return {
           success: true,
-          dataUrl: `data:image/jpeg;base64,${buf.toString('base64')}`,
+          data: rawBase64,
+          mimeType: 'image/jpeg',
+          dataUrl: `data:image/jpeg;base64,${rawBase64}`,
           metadata: {
-            deviceId: targetDevice.id,
-            deviceName: targetDevice.name,
+            deviceId: 'sane-device',
+            deviceName: 'الماسح الضوئي (Linux SANE)',
             protocol: 'SANE',
-            driver: targetDevice.driverName,
             resolutionDpi: resolution,
             colorMode: colorMode,
             scanDurationMs: Date.now() - startTime,
@@ -234,18 +370,20 @@ async function acquireScanFromDevice(options = {}) {
         };
       }
     } catch (e) {
-      console.warn('Native SANE scan failed, falling back to driver bridge:', e.message);
+      console.warn('Native SANE scan notice:', e.message);
     }
   }
 
-  // في حال عدم توفر اتصال فعلي بالماسح الضوئي (WIA / SANE)، لا نقوم بتوليد أي وثيقة وهمية إطلاقاً
+  // Graceful response when no physical scanner responds
   return {
     success: false,
-    error: 'تعذر سحب الصورة: لم يتم الكشف عن ماسح ضوئي متصل أو تعذر قراءة المستند من الجهاز. يرجى التأكد من توصيل كابل USB وتشغيل الماسح ووضع الورقة، أو استخدام الكاميرا لالتقاط صورة الورقة الحقيقية أو رفع ملفها.'
+    error: 'تعذر الاتصال بالماسح الضوئي: يرجى التأكد من توصيل كابل USB أو كابل الشبكة بالماسح، وتشغيل الجهاز، أو استخدام خيار سحب الملف الممسوح أو التقاطه بالكاميرا.'
   };
 }
 
 module.exports = {
+  findNaps2Path,
+  scanWithNaps2,
   detectLocalScanners,
   acquireScanFromDevice
 };

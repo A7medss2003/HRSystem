@@ -371,7 +371,8 @@ function createWindow() {
     backgroundColor: '#f8fafc',
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false
+      contextIsolation: false,
+      preload: path.join(__dirname, 'preload.cjs')
     }
   });
   
@@ -545,6 +546,39 @@ ipcMain.handle('scanner:scan-document', async (event, options) => {
   } catch (err) {
     console.error('IPC scanner:scan-document error:', err);
     return { success: false, error: err.message };
+  }
+});
+
+// Exact IPC Handler from User's Reference Specification ('scan-document')
+ipcMain.handle('scan-document', async (event, options = {}) => {
+  try {
+    const { acquireScanFromDevice } = loadScannerDriver();
+    const result = await acquireScanFromDevice({
+      deviceId: options.deviceId,
+      resolution: options.dpi || 300,
+      colorMode: options.colorMode || 'color',
+      format: options.format || 'pdf'
+    });
+
+    if (result && result.success) {
+      return {
+        success: true,
+        data: result.data,
+        mimeType: result.mimeType || 'application/pdf',
+        dataUrl: result.dataUrl
+      };
+    } else {
+      return {
+        success: false,
+        error: result?.error || 'تعذر الاتصال بالماسح الضوئي. يرجى التأكد من توصيل الجهاز وتثبيت برامج التشغيل.'
+      };
+    }
+  } catch (err) {
+    console.error('IPC scan-document error:', err);
+    return {
+      success: false,
+      error: err.message || 'حدث خطأ أثناء تشغيل الماسح الضوئي'
+    };
   }
 });
 

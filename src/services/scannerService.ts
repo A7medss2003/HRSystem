@@ -100,11 +100,109 @@ export class ScannerService {
           this.setupIpcListeners();
         }
       } catch (e) {
-        console.warn('Electron IPC Renderer not available. Scanner running in mock/web mode.');
+        // running in web browser mode
       }
     } else {
-      console.warn('Electron IPC Renderer not available. Scanner running in mock mode.');
+      // Running in browser mode
     }
+  }
+
+  /**
+   * Universal scan document method matching User Reference ('scan-document')
+   * Interacts directly with electronAPI.scanDocument or ipcRenderer.invoke('scan-document')
+   * with fallback to LAN/HTTP API
+   */
+  public async scanDocument(options: ScanOptions = {}): Promise<{
+    success: boolean;
+    data?: string;
+    mimeType?: string;
+    dataUrl?: string;
+    error?: string;
+  }> {
+    this.isScanningSubject.next(true);
+    this.scanProgressSubject.next(20);
+
+    // 1. Try window.electronAPI.scanDocument (User's Preload reference)
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.scanDocument) {
+      try {
+        this.scanProgressSubject.next(50);
+        const res = await (window as any).electronAPI.scanDocument(options);
+        this.isScanningSubject.next(false);
+        this.scanProgressSubject.next(100);
+        if (res && res.success) {
+          const finalUrl = res.dataUrl || `data:${res.mimeType || 'application/pdf'};base64,${res.data}`;
+          this.scanCompleteSubject.next([finalUrl]);
+          return { ...res, dataUrl: finalUrl };
+        } else {
+          const err = res?.error || 'تعذر الاتصال بالماسح الضوئي';
+          this.scanErrorSubject.next(err);
+          return { success: false, error: err };
+        }
+      } catch (err: any) {
+        this.isScanningSubject.next(false);
+        const msg = err.message || 'فشل الاتصال بالماسح الضوئي';
+        this.scanErrorSubject.next(msg);
+        return { success: false, error: msg };
+      }
+    }
+
+    // 2. Try this.ipcRenderer invoke('scan-document')
+    if (this.ipcRenderer) {
+      try {
+        this.scanProgressSubject.next(50);
+        const res = await this.ipcRenderer.invoke('scan-document', options);
+        this.isScanningSubject.next(false);
+        this.scanProgressSubject.next(100);
+        if (res && res.success) {
+          const finalUrl = res.dataUrl || `data:${res.mimeType || 'application/pdf'};base64,${res.data}`;
+          this.scanCompleteSubject.next([finalUrl]);
+          return { ...res, dataUrl: finalUrl };
+        } else {
+          const err = res?.error || 'تعذر الاتصال بالماسح الضوئي';
+          this.scanErrorSubject.next(err);
+          return { success: false, error: err };
+        }
+      } catch (err: any) {
+        this.isScanningSubject.next(false);
+        const msg = err.message || 'فشل تشغيل الماسح الضوئي';
+        this.scanErrorSubject.next(msg);
+        return { success: false, error: msg };
+      }
+    }
+
+    // 3. Fallback to HTTP Scanner Endpoint
+    try {
+      this.scanProgressSubject.next(60);
+      const res = await fetch('/api/scanner/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: options.deviceId || '',
+          resolution: options.dpi || 300,
+          colorMode: options.colorMode || 'color',
+          format: options.format || 'pdf'
+        })
+      });
+
+      this.isScanningSubject.next(false);
+      this.scanProgressSubject.next(100);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && data.dataUrl) {
+          this.scanCompleteSubject.next([data.dataUrl]);
+          return data;
+        } else if (data?.error) {
+          this.scanErrorSubject.next(data.error);
+          return { success: false, error: data.error };
+        }
+      }
+    } catch (e) {}
+
+    this.isScanningSubject.next(false);
+    const fallbackErr = 'تعذر الاتصال بالماسح الضوئي. يرجى التأكد من توصيل الجهاز وتثبيت برامج التشغيل.';
+    this.scanErrorSubject.next(fallbackErr);
+    return { success: false, error: fallbackErr };
   }
 
   /**

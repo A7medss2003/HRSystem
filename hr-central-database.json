@@ -91,112 +91,7 @@
   "candidates": [],
   "payrolls": [],
   "performanceReviews": [],
-  "systemAuditLogs": [
-    {
-      "userId": "dev",
-      "userName": "dev",
-      "action": "تسجيل الدخول",
-      "details": "قام المستخدم بتسجيل الدخول للنظام",
-      "id": "log-1792917301492bqc",
-      "timestamp": "2026-10-25T08:35:01.492Z"
-    },
-    {
-      "userId": "dev",
-      "userName": "dev",
-      "action": "تسجيل الدخول",
-      "details": "قام المستخدم بتسجيل الدخول للنظام",
-      "id": "log-1792838514736c1y",
-      "timestamp": "2026-10-24T10:41:54.736Z"
-    },
-    {
-      "userId": "dev",
-      "userName": "dev",
-      "action": "تسجيل الدخول",
-      "details": "قام المستخدم بتسجيل الدخول للنظام",
-      "id": "log-179283796777537f",
-      "timestamp": "2026-10-24T10:32:47.775Z"
-    },
-    {
-      "userId": "dev",
-      "userName": "dev",
-      "action": "تسجيل الدخول",
-      "details": "قام المستخدم بتسجيل الدخول للنظام",
-      "id": "log-1792835675851rr4",
-      "timestamp": "2026-10-24T09:54:35.851Z"
-    },
-    {
-      "userId": "dev",
-      "userName": "dev",
-      "action": "تسجيل الدخول",
-      "details": "قام المستخدم بتسجيل الدخول للنظام",
-      "id": "log-17928353628904tq",
-      "timestamp": "2026-10-24T09:49:22.890Z"
-    },
-    {
-      "userId": "dev",
-      "userName": "dev",
-      "action": "تسجيل الدخول",
-      "details": "قام المستخدم بتسجيل الدخول للنظام",
-      "id": "log-179283501455029t",
-      "timestamp": "2026-10-24T09:43:34.550Z"
-    },
-    {
-      "userId": "dev",
-      "userName": "dev",
-      "action": "تسجيل الدخول",
-      "details": "قام المستخدم بتسجيل الدخول للنظام",
-      "id": "log-1792793959247e9b",
-      "timestamp": "2026-10-23T22:19:19.247Z"
-    },
-    {
-      "userId": "dev",
-      "userName": "dev",
-      "action": "تسجيل الدخول",
-      "details": "قام المستخدم بتسجيل الدخول للنظام",
-      "id": "log-1792793340537la8",
-      "timestamp": "2026-10-23T22:09:00.537Z"
-    },
-    {
-      "userId": "dev",
-      "userName": "dev",
-      "action": "تسجيل الدخول",
-      "details": "قام المستخدم بتسجيل الدخول للنظام",
-      "id": "log-17927927897614zc",
-      "timestamp": "2026-10-23T21:59:49.761Z"
-    },
-    {
-      "userId": "dev",
-      "userName": "dev",
-      "action": "تسجيل الدخول",
-      "details": "قام المستخدم بتسجيل الدخول للنظام",
-      "id": "log-1792791986928h34",
-      "timestamp": "2026-10-23T21:46:26.928Z"
-    },
-    {
-      "userId": "dev",
-      "userName": "dev",
-      "action": "تسجيل الدخول",
-      "details": "قام المستخدم بتسجيل الدخول للنظام",
-      "id": "log-179248095180004u",
-      "timestamp": "2026-10-20T07:22:31.800Z"
-    },
-    {
-      "userId": "system",
-      "userName": "النظام",
-      "action": "تحديث المنظومة",
-      "details": "تم ترقية المنظومة بنجاح من الإصدار القديم إلى الإصدار 1.3.0",
-      "id": "log-1792315356984rd2",
-      "timestamp": "2026-10-18T09:22:36.984Z"
-    },
-    {
-      "userId": "system",
-      "userName": "النظام",
-      "action": "تحديث المنظومة",
-      "details": "تم ترقية المنظومة بنجاح من الإصدار القديم إلى الإصدار 1.3.0",
-      "id": "log-1792315356975iu7",
-      "timestamp": "2026-10-18T09:22:36.975Z"
-    }
-  ],
+  "systemAuditLogs": [],
   "globalCustomFields": [],
   "systemSettings": {
     "companyName": "مركز البنيان للتقنية و الصناعات الهندسية",
@@ -208,6 +103,6 @@
   },
   "recoveryCodes": [],
   "backupPath": "D:\\HR_Backup",
-  "lastBackupDate": "2026-10-25T08:46:51.858Z",
-  "lastUpdated": "2026-10-25T08:46:51.859Z"
+  "lastBackupDate": "2026-10-30T21:42:01.602Z",
+  "lastUpdated": "2026-10-30T21:42:01.603Z"
 }
