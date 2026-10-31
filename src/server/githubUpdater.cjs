@@ -261,6 +261,7 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
   const { owner, repo: repoName } = parsed;
   const targetBranch = branch.trim() || 'main';
   const rootDir = path.resolve(__dirname, '..', '..');
+  let distFilesUpdated = 0;
 
   const addLog = (msg) => {
     logs.push({ time: new Date().toLocaleTimeString('ar-EG'), message: msg });
@@ -434,6 +435,33 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
               // Move validated staging to active dist
               fs.cpSync(stagingDir, targetDist, { recursive: true });
               try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
+
+              // Also download and update server script files if available in tree
+              const serverBlobs = treeData.tree.filter(
+                item => item.type === 'blob' && (
+                  item.path === 'src/server/githubUpdater.cjs' ||
+                  item.path === 'src/server/scannerDriver.cjs' ||
+                  item.path === 'githubUpdater.cjs' ||
+                  item.path === 'scannerDriver.cjs'
+                )
+              );
+              for (const sBlob of serverBlobs) {
+                try {
+                  const sTarget = path.join(updateBase, sBlob.path);
+                  const sDir = path.dirname(sTarget);
+                  if (!fs.existsSync(sDir)) fs.mkdirSync(sDir, { recursive: true });
+                  await downloadGitHubFile({
+                    owner,
+                    repo: repoName,
+                    sha: sBlob.sha,
+                    filePath: sBlob.path,
+                    targetPath: sTarget,
+                    token,
+                    commitSha: latest.sha
+                  });
+                } catch (sErr) {}
+              }
+
               addLog(`✓ تم التحقق من سلامة كافة الملفات ونشر الواجهة الجديدة بنجاح (${distFilesUpdated} ملف)!`);
             } else {
               addLog('❌ فشل التحقق من اكتمال ملفات الواجهة (قد تكون ناقصة أو تالفة)، تم إلغاء النشر لحماية البرنامج.');

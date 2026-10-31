@@ -69,14 +69,21 @@ function getCentralDbFile() {
 
 // دوال آمنة لتحميل وحدات الخادم سواء في بيئة التطوير أو داخل حزمة Electron بعد التثبيت (app.asar)
 function loadGitHubUpdater() {
-  const candidates = [
+  const candidates = [];
+  try {
+    const uData = app.getPath('userData');
+    candidates.push(path.join(uData, 'app_update', 'src', 'server', 'githubUpdater.cjs'));
+    candidates.push(path.join(uData, 'app_update', 'githubUpdater.cjs'));
+  } catch (e) {}
+
+  candidates.push(
     path.join(__dirname, 'src', 'server', 'githubUpdater.cjs'),
     path.join(__dirname, 'githubUpdater.cjs'),
     path.resolve(process.cwd(), 'src', 'server', 'githubUpdater.cjs'),
     path.resolve(process.cwd(), 'githubUpdater.cjs'),
     './src/server/githubUpdater.cjs',
     './githubUpdater.cjs'
-  ];
+  );
 
   for (const target of candidates) {
     try {
@@ -89,14 +96,21 @@ function loadGitHubUpdater() {
 }
 
 function loadScannerDriver() {
-  const candidates = [
+  const candidates = [];
+  try {
+    const uData = app.getPath('userData');
+    candidates.push(path.join(uData, 'app_update', 'src', 'server', 'scannerDriver.cjs'));
+    candidates.push(path.join(uData, 'app_update', 'scannerDriver.cjs'));
+  } catch (e) {}
+
+  candidates.push(
     path.join(__dirname, 'src', 'server', 'scannerDriver.cjs'),
     path.join(__dirname, 'scannerDriver.cjs'),
     path.resolve(process.cwd(), 'src', 'server', 'scannerDriver.cjs'),
     path.resolve(process.cwd(), 'scannerDriver.cjs'),
     './src/server/scannerDriver.cjs',
     './scannerDriver.cjs'
-  ];
+  );
 
   for (const target of candidates) {
     try {
