@@ -129,7 +129,22 @@ function isValidDist(dirPath) {
 function getAppDistPath() {
   try {
     const updatedDist = path.join(app.getPath('userData'), 'app_update', 'dist');
-    if (isValidDist(updatedDist)) {
+    const localDist = path.join(__dirname, 'dist');
+    
+    const isUpdatedValid = isValidDist(updatedDist);
+    const isLocalValid = isValidDist(localDist);
+
+    if (isUpdatedValid && isLocalValid) {
+      const updatedTime = fs.statSync(path.join(updatedDist, 'index.html')).mtimeMs;
+      const localTime = fs.statSync(path.join(localDist, 'index.html')).mtimeMs;
+      if (updatedTime >= localTime) {
+        console.log('Running from newer downloaded update dist:', updatedDist);
+        return updatedDist;
+      } else {
+        console.log('Running from newer locally built dist:', localDist);
+        return localDist;
+      }
+    } else if (isUpdatedValid) {
       console.log('Running from verified user downloaded update dist:', updatedDist);
       return updatedDist;
     } else if (fs.existsSync(updatedDist)) {
@@ -632,6 +647,7 @@ ipcMain.handle('app:reload-window', () => {
             console.log('Reloading active window from:', targetIndex);
             try {
               await mainWindow.webContents.session.clearCache();
+              await mainWindow.webContents.session.clearStorageData({ storages: ['cachestorage', 'appcache', 'shadercache'] });
             } catch (cErr) {}
             mainWindow.loadFile(targetIndex);
           }
@@ -673,6 +689,7 @@ ipcMain.handle('app:reset-to-original', () => {
       setTimeout(async () => {
         try {
           await mainWindow.webContents.session.clearCache();
+          await mainWindow.webContents.session.clearStorageData({ storages: ['cachestorage', 'appcache', 'shadercache'] });
         } catch (e) {}
         mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
       }, 100);

@@ -24,9 +24,10 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
-echo [+] خطوة 2: مزامنة وحدات التحديث...
+echo [+] خطوة 2: مزامنة وحدات التحديث وإعداد خطافات Git التلقائية...
 if exist "src\server\githubUpdater.cjs" copy /y "src\server\githubUpdater.cjs" "githubUpdater.cjs" > nul
 if exist "src\server\scannerDriver.cjs" copy /y "src\server\scannerDriver.cjs" "scannerDriver.cjs" > nul
+git config core.hooksPath .githooks > nul 2>&1
 
 echo.
 echo [+] خطوة 3: تجهيز الملفات لـ Git...

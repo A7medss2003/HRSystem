@@ -265,71 +265,54 @@ export class GitHubUpdateService {
   public async applyUpdate(customConfig?: Partial<GitHubUpdateConfig>): Promise<GitHubApplyResult> {
     const config = { ...this.getConfig(), ...customConfig };
 
-    // 1. Try Electron IPC with 45s race timeout
+    // 1. Try Electron IPC with 60s timeout
     const ipc = getIpcRenderer();
     if (ipc) {
       try {
         const res = await Promise.race([
           ipc.invoke('github:apply-update', config),
-          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('IPC update timeout')), 45000))
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('انتهت مهلة تحديث المنظومة (60 ثانية)')), 60000))
         ]);
-        if (res && res.success) {
-          if (res.latestCommit?.sha) {
+        if (res) {
+          if (res.success && res.latestCommit?.sha) {
             localStorage.setItem('hr_installed_commit_sha', res.latestCommit.sha);
             localStorage.setItem('hr_last_update_date', new Date().toISOString());
           }
           return res;
         }
-      } catch (e) {}
+      } catch (e: any) {
+        console.warn('IPC update error:', e.message);
+        return {
+          success: false,
+          error: `خطأ أثناء تطبيق التحديث عبر Electron: ${e.message}`
+        };
+      }
     }
 
-    // 2. Try Embedded Server API with 45s timeout
+    // 2. Try Embedded Server API with 60s timeout
     try {
       const res = await fetch('/api/system/github/apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config),
-        signal: AbortSignal.timeout(45000)
+        signal: AbortSignal.timeout(60000)
       });
       if (res.ok) {
         const data = await res.json();
-        if (data && data.success) {
-          if (data.latestCommit?.sha) {
+        if (data) {
+          if (data.success && data.latestCommit?.sha) {
             localStorage.setItem('hr_installed_commit_sha', data.latestCommit.sha);
             localStorage.setItem('hr_last_update_date', new Date().toISOString());
           }
           return data;
         }
-        if (data && data.error && !data.error.includes('Cannot find module')) {
-          return data;
-        }
       }
     } catch (e) {}
 
-    // 3. Client-side simulated fallback with check
-    const check = await this.checkUpdates(config);
-    if (!check.success || !check.latestCommit) {
-      return {
-        success: false,
-        error: check.error || 'تعذر التحقق من التحديث قبل التطبيق'
-      };
-    }
-
-    const latest = check.latestCommit;
-    localStorage.setItem('hr_installed_commit_sha', latest.sha);
-    localStorage.setItem('hr_last_update_date', new Date().toISOString());
-
+    // 3. Fallback when not running in Electron desktop runtime
     return {
-      success: true,
-      latestCommit: latest,
-      logs: [
-        { time: new Date().toLocaleTimeString('ar-EG'), message: 'الاتصال بمستودع GitHub بنجاح' },
-        { time: new Date().toLocaleTimeString('ar-EG'), message: `تم جلب الـ Commit: [${latest.shortSha}]` },
-        { time: new Date().toLocaleTimeString('ar-EG'), message: 'تطبيق التعديلات في بنية المنظومة' },
-        { time: new Date().toLocaleTimeString('ar-EG'), message: 'الحفاظ على جميع قواعد البيانات المركزية' },
-        { time: new Date().toLocaleTimeString('ar-EG'), message: 'اكتمل التحديث بنجاح!' }
-      ],
-      message: `تم تحديث المنظومة بنجاح إلى النسخة (${latest.shortSha})!`
+      success: false,
+      error: 'لا يمكن تطبيق وتثبيت التحديثات إلا عبر تطبيق سطح المكتب (Electron Desktop). يرجى فتح المنظومة من أيقونة البرنامج المثبت على سطح المكتب لتطبيق التحديث.'
     };
   }
 

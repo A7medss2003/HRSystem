@@ -1,0 +1,49 @@
+name: Auto Build Dist for In-App Updates
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - 'dist/**'
+      - '.github/**'
+      - '*.md'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-commit-dist:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install --prefer-offline --no-audit
+
+      - name: Build Production Dist
+        run: npm run build
+
+      - name: Commit and Push Updated Dist
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f dist/
+          if git diff --staged --quiet; then
+            echo "No changes in dist bundle."
+          else
+            git commit -m "chore(dist): auto-build frontend bundle for in-app updater [skip ci]"
+            git push
+          fi

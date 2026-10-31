@@ -59,6 +59,24 @@ function isValidDistFolder(dirPath) {
   }
 }
 
+function countFilesInDir(dirPath) {
+  let count = 0;
+  try {
+    if (!fs.existsSync(dirPath)) return 0;
+    const items = fs.readdirSync(dirPath);
+    for (const item of items) {
+      const full = path.join(dirPath, item);
+      const stat = fs.statSync(full);
+      if (stat.isDirectory()) {
+        count += countFilesInDir(full);
+      } else {
+        count++;
+      }
+    }
+  } catch (e) {}
+  return count;
+}
+
 function parseGitHubRepo(input) {
   if (!input || typeof input !== 'string') return null;
   let clean = input.trim().replace(/\.git$/, '');
@@ -295,6 +313,22 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
             exec('npm run build', { cwd: rootDir, timeout: 60000 }, (bErr, bStdout, bStderr) => {
               if (!bErr) {
                 addLog('✓ تم بناء الواجهة المحدثة بنجاح (npm run build)!');
+                try {
+                  const localDist = path.join(rootDir, 'dist');
+                  const updateBaseDir = getUpdateDir();
+                  const targetDist = path.join(updateBaseDir, 'dist');
+                  if (isValidDistFolder(localDist)) {
+                    if (fs.existsSync(targetDist)) {
+                      try { fs.rmSync(targetDist, { recursive: true, force: true }); } catch (e) {}
+                    }
+                    fs.cpSync(localDist, targetDist, { recursive: true });
+                    const fileCount = countFilesInDir(localDist);
+                    distFilesUpdated = fileCount;
+                    addLog(`✓ تم مزامنة ونشر حزم الواجهة المحلية المحدثة بنجاح (${fileCount} ملف)!`);
+                  }
+                } catch (cpErr) {
+                  console.warn('Syncing local dist error:', cpErr.message);
+                }
               } else {
                 addLog(`ملاحظة في البناء: ${bStderr || bErr.message}`);
               }
@@ -308,136 +342,143 @@ async function applyGitHubUpdate({ repo, branch = 'main', token = '', logs = [] 
     }
   }
 
-  // 3. Download & apply dist/ files for installed desktop application with atomic staging
-  addLog('جاري فحص شجرة الملفات المجهزة في المستودع...');
-  const treeUrl = `https://api.github.com/repos/${owner}/${repoName}/git/trees/${latest.sha}?recursive=1`;
-  const treeHeaders = {
-    'Accept': 'application/vnd.github.v3+json',
-    'User-Agent': 'HR-System-InApp-Updater'
-  };
-  if (token && token.trim()) {
-    treeHeaders['Authorization'] = `token ${token.trim()}`;
-  }
-
-  let distFilesUpdated = 0;
-  const updateBase = getUpdateDir();
-  const stagingDir = path.join(updateBase, 'staging_dist');
-
-  try {
-    // Clean staging folder first
-    if (fs.existsSync(stagingDir)) {
-      try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
+  // 3. Download & apply dist/ files for installed desktop application with atomic staging (if not updated via local build)
+  if (distFilesUpdated === 0) {
+    addLog('جاري فحص شجرة الملفات المجهزة في المستودع...');
+    const treeUrl = `https://api.github.com/repos/${owner}/${repoName}/git/trees/${latest.sha}?recursive=1`;
+    const treeHeaders = {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'HR-System-InApp-Updater'
+    };
+    if (token && token.trim()) {
+      treeHeaders['Authorization'] = `token ${token.trim()}`;
     }
-    fs.mkdirSync(stagingDir, { recursive: true });
 
-    const treeRes = await fetch(treeUrl, { 
-      headers: treeHeaders,
-      signal: AbortSignal.timeout(15000)
-    });
+    const updateBase = getUpdateDir();
+    const stagingDir = path.join(updateBase, 'staging_dist');
 
-    if (treeRes.ok) {
-      const treeData = await treeRes.json();
-      if (treeData && Array.isArray(treeData.tree)) {
-        let distBlobs = treeData.tree.filter(
-          item => item.type === 'blob' && (item.path.startsWith('dist/') || item.path.startsWith('dist\\'))
-        );
+    try {
+      // Clean staging folder first
+      if (fs.existsSync(stagingDir)) {
+        try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
+      }
+      fs.mkdirSync(stagingDir, { recursive: true });
 
-        let isRootDist = false;
-        if (distBlobs.length === 0) {
-          const rootAssets = treeData.tree.filter(
-            item => item.type === 'blob' && (item.path.startsWith('assets/') || item.path === 'index.html' || item.path === 'logo.png')
+      const treeRes = await fetch(treeUrl, { 
+        headers: treeHeaders,
+        signal: AbortSignal.timeout(15000)
+      });
+
+      if (treeRes.ok) {
+        const treeData = await treeRes.json();
+        if (treeData && Array.isArray(treeData.tree)) {
+          let distBlobs = treeData.tree.filter(
+            item => item.type === 'blob' && (item.path.startsWith('dist/') || item.path.startsWith('dist\\'))
           );
-          if (rootAssets.some(x => x.path === 'index.html')) {
-            distBlobs = rootAssets;
-            isRootDist = true;
+
+          let isRootDist = false;
+          if (distBlobs.length === 0) {
+            const rootAssets = treeData.tree.filter(
+              item => item.type === 'blob' && (item.path.startsWith('assets/') || item.path === 'index.html' || item.path === 'logo.png')
+            );
+            if (rootAssets.some(x => x.path === 'index.html')) {
+              distBlobs = rootAssets;
+              isRootDist = true;
+            }
           }
-        }
 
-        if (distBlobs.length > 0) {
-          addLog(`تم العثور على ${distBlobs.length} ملف للواجهة، جاري تنزيلها وتأمينها...`);
+          if (distBlobs.length > 0) {
+            addLog(`تم العثور على ${distBlobs.length} ملف للواجهة، جاري تنزيلها وتأمينها...`);
 
-          for (let i = 0; i < distBlobs.length; i++) {
-            const blob = distBlobs[i];
-            // Normalize path relative to dist/
-            let relInsideDist = blob.path;
-            if (relInsideDist.startsWith('dist/') || relInsideDist.startsWith('dist\\')) {
-              relInsideDist = relInsideDist.substring(5);
-            }
-
-            const destPath = path.join(stagingDir, relInsideDist);
-            const parentDir = path.dirname(destPath);
-            if (!fs.existsSync(parentDir)) {
-              fs.mkdirSync(parentDir, { recursive: true });
-            }
-
-            try {
-              await downloadGitHubFile({
-                owner,
-                repo: repoName,
-                sha: blob.sha,
-                filePath: blob.path,
-                targetPath: destPath,
-                token,
-                commitSha: latest.sha
-              });
-              distFilesUpdated++;
-
-              if ((i + 1) % 4 === 0 || (i + 1) === distBlobs.length) {
-                addLog(`تنزيل الملفات بأمان: (${i + 1}/${distBlobs.length})...`);
+            for (let i = 0; i < distBlobs.length; i++) {
+              const blob = distBlobs[i];
+              // Normalize path relative to dist/
+              let relInsideDist = blob.path;
+              if (relInsideDist.startsWith('dist/') || relInsideDist.startsWith('dist\\')) {
+                relInsideDist = relInsideDist.substring(5);
               }
-            } catch (dlErr) {
-              console.warn(`Error downloading ${blob.path}:`, dlErr.message);
-              addLog(`تنبيه أثناء تنزيل ${blob.path}: ${dlErr.message}`);
-            }
-          }
 
-          // Atomic validation: only deploy if staging is 100% valid
-          if (isValidDistFolder(stagingDir)) {
-            const targetDist = path.join(updateBase, 'dist');
-            if (fs.existsSync(targetDist)) {
-              try { fs.rmSync(targetDist, { recursive: true, force: true }); } catch (e) {}
+              const destPath = path.join(stagingDir, relInsideDist);
+              const parentDir = path.dirname(destPath);
+              if (!fs.existsSync(parentDir)) {
+                fs.mkdirSync(parentDir, { recursive: true });
+              }
+
+              try {
+                await downloadGitHubFile({
+                  owner,
+                  repo: repoName,
+                  sha: blob.sha,
+                  filePath: blob.path,
+                  targetPath: destPath,
+                  token,
+                  commitSha: latest.sha
+                });
+                distFilesUpdated++;
+
+                if ((i + 1) % 4 === 0 || (i + 1) === distBlobs.length) {
+                  addLog(`تنزيل الملفات بأمان: (${i + 1}/${distBlobs.length})...`);
+                }
+              } catch (dlErr) {
+                console.warn(`Error downloading ${blob.path}:`, dlErr.message);
+                addLog(`تنبيه أثناء تنزيل ${blob.path}: ${dlErr.message}`);
+              }
             }
-            // Move validated staging to active dist
-            fs.cpSync(stagingDir, targetDist, { recursive: true });
-            try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
-            addLog(`✓ تم التحقق من سلامة كافة الملفات ونشر الواجهة الجديدة بنجاح (${distFilesUpdated} ملف)!`);
+
+            // Atomic validation: only deploy if staging is 100% valid
+            if (isValidDistFolder(stagingDir)) {
+              const targetDist = path.join(updateBase, 'dist');
+              if (fs.existsSync(targetDist)) {
+                try { fs.rmSync(targetDist, { recursive: true, force: true }); } catch (e) {}
+              }
+              // Move validated staging to active dist
+              fs.cpSync(stagingDir, targetDist, { recursive: true });
+              try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
+              addLog(`✓ تم التحقق من سلامة كافة الملفات ونشر الواجهة الجديدة بنجاح (${distFilesUpdated} ملف)!`);
+            } else {
+              addLog('❌ فشل التحقق من اكتمال ملفات الواجهة (قد تكون ناقصة أو تالفة)، تم إلغاء النشر لحماية البرنامج.');
+              try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
+              return {
+                success: false,
+                distFilesUpdated: 0,
+                logs,
+                error: 'ملفات التحديث المنزلة من GitHub غير مكتملة (ناقصة أو لم تحتوي على حزم JavaScript). تم الحفاظ على النسخة الحالية دون أي خلل.'
+              };
+            }
           } else {
-            addLog('❌ فشل التحقق من اكتمال ملفات الواجهة (قد تكون ناقصة أو تالفة)، تم إلغاء النشر لحماية البرنامج.');
-            try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
+            addLog('❌ تنبيه: مستودع GitHub لا يحتوي على مجلد dist/ المبني بعد.');
+            addLog('ملاحظة: إذا تم رفع التعديلات للتو، فإن GitHub Actions يقوم حالياً ببنائها وتضمينها آلياً (تستغرق 30-45 ثانية).');
+            addLog('الحل: يرجى الانتظار دقيقة وإعادة الفحص، أو تشغيل "رفع_التحديث_الى_جيت_هب.bat" على جهاز المطور للبناء والرفع الفوري.');
             return {
               success: false,
               distFilesUpdated: 0,
               logs,
-              error: 'ملفات التحديث المنزلة من GitHub غير مكتملة (ناقصة أو لم تحتوي على حزم JavaScript). تم الحفاظ على النسخة الحالية دون أي خلل.'
+              error: 'حزم الواجهة المترجمة لم تكتمل على GitHub بعد. إذا تم الرفع للتو، جاري بناؤها آلياً عبر GitHub Actions (انتظر دقيقة)، أو شغّل "رفع_التحديث_الى_جيت_هب.bat".'
             };
           }
-        } else {
-          addLog('❌ تنبيه: مستودع GitHub لا يحتوي على مجلد dist/ المبني.');
-          addLog('السبب: تم رفع التعديلات كأكواد برمجية فقط دون بناء ملفات التشغيل.');
-          addLog('الحل: شغّل "رفع_التحديث_الى_جيت_هب.bat" على جهاز المطور أولاً.');
         }
+      } else {
+        addLog(`تعذر قراءة شجرة المستودع (${treeRes.status}): ${treeRes.statusText}`);
       }
-    } else {
-      addLog(`تعذر قراءة شجرة المستودع (${treeRes.status}): ${treeRes.statusText}`);
-    }
-  } catch (treeErr) {
-    addLog(`ملاحظة أثناء فحص الشجرة: ${treeErr.message}`);
-    if (fs.existsSync(stagingDir)) {
-      try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
+    } catch (treeErr) {
+      addLog(`ملاحظة أثناء فحص الشجرة: ${treeErr.message}`);
+      if (fs.existsSync(stagingDir)) {
+        try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
+      }
     }
   }
 
-  // 4. Verification Check
-  if (!isGitRepo && distFilesUpdated === 0) {
+  // 4. Verification Check: Ensure files were actually downloaded and updated
+  if (distFilesUpdated === 0) {
     return {
       success: false,
       distFilesUpdated: 0,
       logs,
-      error: 'المستودع على GitHub لا يحتوي على ملفات الواجهة المبنية (dist/). يرجى تشغيل "رفع_التحديث_الى_جيت_هب.bat" على جهاز المطور أولاً.'
+      error: 'تعذر تنزيل وتثبيت ملفات التحديث من GitHub. تأكد من أن مستودع GitHub يحتوي على مجلد dist/ المحدث.'
     };
   }
 
-  // 5. Record new version info locally
+  // 5. Record new version info locally (only after genuine successful update)
   saveStoredVersion({
     commitSha: latest.sha,
     shortSha: latest.shortSha,

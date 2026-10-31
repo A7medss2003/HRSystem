@@ -1,10 +1,12 @@
-import { Bell, Search, UserCircle, AlertTriangle, AlertCircle, Calendar, Clock, CheckSquare, X, ShieldAlert, Cable, Server } from 'lucide-react';
+import { Bell, Search, UserCircle, AlertTriangle, AlertCircle, Calendar, Clock, CheckSquare, X, ShieldAlert, Cable, Server, RefreshCw, DownloadCloud, Sparkles } from 'lucide-react';
 import React, { useEffect, useState, useRef } from 'react';
 import { toast } from './Toast';
 import { Employee, LeaveRequest } from '../types';
 import { isManagerEmployee, isRegularUser } from '../lib/managerGuard';
 import { getStoredServerConfig, fetchNetworkInterfaces } from '../lib/serverSync';
 import EthernetServerModal from './EthernetServerModal';
+import GitHubUpdateModal from './GitHubUpdateModal';
+import { githubUpdateService, GitHubCommitInfo } from '../services/githubUpdateService';
 
 import { useStore } from '../store';
 
@@ -28,10 +30,61 @@ export default function Topbar({
   });
   const [showNotifications, setShowNotifications] = useState(false);
   const [showEthernetModal, setShowEthernetModal] = useState(false);
+  const [showGitHubModal, setShowGitHubModal] = useState(false);
+  const [hasGitHubUpdate, setHasGitHubUpdate] = useState(false);
+  const [remoteCommit, setRemoteCommit] = useState<GitHubCommitInfo | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [ethernetIp, setEthernetIp] = useState<string>('192.168.1.1');
   const [serverPort, setServerPort] = useState<number>(3000);
   const [serverRole, setServerRole] = useState<'host' | 'client' | 'standalone'>('host');
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // الفحص الدوري الذكي للتحديثات في الخلفية من GitHub
+  useEffect(() => {
+    let isMounted = true;
+    const checkBgUpdate = async () => {
+      try {
+        const res = await githubUpdateService.checkUpdates();
+        if (isMounted && res.success && res.hasUpdate && res.latestCommit) {
+          setHasGitHubUpdate(true);
+          setRemoteCommit(res.latestCommit);
+        }
+      } catch (e) {}
+    };
+
+    const initTimer = setTimeout(checkBgUpdate, 2500);
+    const intervalTimer = setInterval(checkBgUpdate, 4 * 60 * 1000);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(initTimer);
+      clearInterval(intervalTimer);
+    };
+  }, []);
+
+  const handleQuickCheckUpdate = async () => {
+    setIsCheckingUpdate(true);
+    try {
+      const res = await githubUpdateService.checkUpdates();
+      if (res.success) {
+        if (res.hasUpdate && res.latestCommit) {
+          setHasGitHubUpdate(true);
+          setRemoteCommit(res.latestCommit);
+          toast(`يوجد تحديث جديد على GitHub [${res.latestCommit.shortSha}]! 🚀`, 'info');
+          setShowGitHubModal(true);
+        } else {
+          setHasGitHubUpdate(false);
+          toast('المنظومة محدثة لأحدث نسخة متوفرة على GitHub ✅', 'success');
+        }
+      } else {
+        toast(res.error || 'تعذر فحص التحديثات', 'warning');
+      }
+    } catch (e: any) {
+      toast('خطأ أثناء فحص التحديثات', 'error');
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -104,7 +157,7 @@ export default function Topbar({
   const generatedNotifications = React.useMemo(() => {
     const list: {
       id: string;
-      type: 'contract_expire' | 'contract_expired' | 'leave_active' | 'leave_upcoming' | 'leave_pending' | 'doc_expire' | 'doc_expired' | 'system';
+      type: 'contract_expire' | 'contract_expired' | 'leave_active' | 'leave_upcoming' | 'leave_pending' | 'doc_expire' | 'doc_expired' | 'system' | 'system_update';
       title: string;
       description: string;
       date: string;
@@ -259,8 +312,21 @@ export default function Topbar({
       });
     }
 
+    // 4. GitHub In-App System Update Notification
+    if (hasGitHubUpdate && remoteCommit) {
+      list.unshift({
+        id: `github-update-${remoteCommit.shortSha}`,
+        type: 'system_update',
+        title: `تحديث جديد للمنظومة متوفر [${remoteCommit.shortSha}]`,
+        description: `يتوفر إصدار برمجيات محدث على GitHub: «${remoteCommit.message}». اضغط هنا للمعاينة والتثبيت الفوري.`,
+        date: remoteCommit.date ? new Date(remoteCommit.date).toLocaleDateString('ar-LY') : 'الآن',
+        severity: 'info',
+        linkMenu: 'settings'
+      });
+    }
+
     return list.filter(item => !dismissedIds.includes(item.id));
-  }, [employees, leaves, dismissedIds, user]);
+  }, [employees, leaves, dismissedIds, user, hasGitHubUpdate, remoteCommit]);
 
   const highSeverityCount = generatedNotifications.filter(n => n.severity === 'high').length;
   const displayedNotifications = filterTab === 'high' 
@@ -366,35 +432,48 @@ export default function Topbar({
               </div>
 
               {/* Filter Tabs for All vs High (Red) */}
-              {generatedNotifications.length > 0 && (
-                <div className="flex items-center justify-between border-b border-slate-100 bg-white px-3 py-1.5 text-xs">
-                  <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between border-b border-slate-100 bg-white px-3 py-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFilterTab('all')}
+                    className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                      filterTab === 'all'
+                        ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs'
+                        : 'text-slate-500 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>الكل</span>
+                    <span className="mr-1.5 font-mono">({generatedNotifications.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterTab('high')}
+                    className={`px-3 py-1 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      filterTab === 'high'
+                        ? 'bg-red-50 text-red-700 border border-red-200 shadow-2xs'
+                        : 'text-slate-500 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-red-500 inline-block animate-ping" />
+                    <span>الحمراء العاجلة</span>
+                    <span className="font-mono">({highSeverityCount})</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {isDevOrAdmin && (
                     <button
                       type="button"
-                      onClick={() => setFilterTab('all')}
-                      className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                        filterTab === 'all'
-                          ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs'
-                          : 'text-slate-500 hover:bg-slate-50'
-                      }`}
+                      onClick={handleQuickCheckUpdate}
+                      disabled={isCheckingUpdate}
+                      className="text-[11px] text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 transition-all cursor-pointer hover:underline"
+                      title="فحص توفر تحديثات جديدة من GitHub"
                     >
-                      <span>الكل</span>
-                      <span className="mr-1.5 font-mono">({generatedNotifications.length})</span>
+                      <RefreshCw size={11} className={isCheckingUpdate ? 'animate-spin' : ''} />
+                      <span>{isCheckingUpdate ? 'فحص...' : 'فحص تحديثات'}</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setFilterTab('high')}
-                      className={`px-3 py-1 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                        filterTab === 'high'
-                          ? 'bg-red-50 text-red-700 border border-red-200 shadow-2xs'
-                          : 'text-slate-500 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span className="w-2 h-2 rounded-full bg-red-500 inline-block animate-ping" />
-                      <span>الحمراء العاجلة</span>
-                      <span className="font-mono">({highSeverityCount})</span>
-                    </button>
-                  </div>
+                  )}
 
                   {filterTab === 'high' && highSeverityCount > 0 && (
                     <button
@@ -410,19 +489,25 @@ export default function Topbar({
                     </button>
                   )}
                 </div>
-              )}
+              </div>
 
               <div className="max-h-[360px] overflow-y-auto divide-y divide-slate-100">
                 {displayedNotifications.map((notif) => (
                   <div 
                     key={notif.id}
                     className={`p-3.5 hover:bg-slate-50/70 transition-colors flex gap-3 relative group ${
+                      notif.type === 'system_update' ? 'bg-blue-50/40 border-r-4 border-r-blue-600' :
                       notif.severity === 'high' ? 'bg-red-50/30' : ''
                     }`}
                   >
                     <div 
                       className="flex-1 cursor-pointer" 
                       onClick={() => {
+                        if (notif.type === 'system_update') {
+                          setShowGitHubModal(true);
+                          setShowNotifications(false);
+                          return;
+                        }
                         if (onNavigate) {
                           onNavigate(notif.linkMenu, notif.employeeId);
                           setShowNotifications(false);
@@ -430,16 +515,28 @@ export default function Topbar({
                       }}
                     >
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`w-2 h-2 rounded-full shrink-0 ${
-                          notif.severity === 'high' ? 'bg-red-500 animate-ping' :
-                          notif.severity === 'medium' ? 'bg-amber-500' : 'bg-blue-500'
-                        }`} />
-                        <h5 className="font-bold text-slate-800 text-xs">
+                        {notif.type === 'system_update' ? (
+                          <DownloadCloud size={14} className="text-blue-600 shrink-0 animate-bounce" />
+                        ) : (
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${
+                            notif.severity === 'high' ? 'bg-red-500 animate-ping' :
+                            notif.severity === 'medium' ? 'bg-amber-500' : 'bg-blue-500'
+                          }`} />
+                        )}
+                        <h5 className={`font-bold text-xs ${notif.type === 'system_update' ? 'text-blue-700' : 'text-slate-800'}`}>
                           {notif.title}
                         </h5>
                         <span className="text-[10px] text-slate-400 mr-auto font-mono">{notif.date}</span>
                       </div>
                       <p className="text-slate-600 text-xs leading-relaxed">{notif.description}</p>
+                      {notif.type === 'system_update' && (
+                        <div className="mt-2">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold shadow-2xs transition-colors">
+                            <DownloadCloud size={12} />
+                            اضغط لتثبيت التحديث الآن
+                          </span>
+                        </div>
+                      )}
                     </div>
                     
                     <button 
@@ -481,6 +578,14 @@ export default function Topbar({
     <EthernetServerModal
       isOpen={showEthernetModal}
       onClose={() => setShowEthernetModal(false)}
+    />
+
+    <GitHubUpdateModal
+      isOpen={showGitHubModal}
+      onClose={() => setShowGitHubModal(false)}
+      onUpdateSuccess={() => {
+        setHasGitHubUpdate(false);
+      }}
     />
   </>
   );

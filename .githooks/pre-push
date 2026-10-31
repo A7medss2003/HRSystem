@@ -1,0 +1,24 @@
+#!/bin/sh
+# Automatic pre-push hook for HR System
+# Builds the production dist before pushing to GitHub to guarantee the in-app updater has fresh bundles.
+
+echo "=================================================="
+echo " [HR System] Building production dist before push..."
+echo "=================================================="
+
+npm run build
+
+if [ $? -ne 0 ]; then
+    echo "❌ Build failed! Push aborted to protect GitHub repository."
+    exit 1
+fi
+
+if [ -d "dist" ]; then
+    git add -f dist/
+    if ! git diff --cached --quiet; then
+        echo "✓ Staged fresh dist files for in-app updater."
+    fi
+fi
+
+echo "✓ Build successful. Proceeding with push..."
+exit 0

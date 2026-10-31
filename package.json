@@ -13,7 +13,9 @@
     "electron:build": "npm run build && electron-builder --win --x64",
     "build:update": "node scripts/bump-and-build.cjs",
     "build:update:minor": "node scripts/bump-and-build.cjs minor",
-    "push:github": "npm run build && git add -A && git commit -m \"Update system & dist\" && git push"
+    "push:github": "npm run build && git add -A && git commit -m \"Update system & dist\" && git push",
+    "setup-hooks": "node scripts/setup-hooks.cjs",
+    "postinstall": "node scripts/setup-hooks.cjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
