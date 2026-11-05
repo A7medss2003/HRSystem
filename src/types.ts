@@ -151,6 +151,28 @@ export interface LeaveRequest {
   reason: string;
 }
 
+export type PersonnelAffiliation = 'ضابط' | 'ضابط صف' | 'موظف' | 'متعاون';
+
+export interface MilitaryInfo {
+  militaryNumber?: string;          // الرقم العسكري
+  rank?: string;                    // الرتبة العسكرية (ملازم، نقيب، رائد، عقيد، عميد، لواء، عريف، رقيب، رقيب أول، مساعد، جندي، إلخ)
+  previousRank?: string;            // الرتبة السابقة
+  corps?: string;                   // السلاح / الصنف (مشاة، دروع، هندسة عسكرية، إشارة، دفاع جوي، شرطة عسكرية، حرس، إلخ)
+  unit?: string;                    // الوحدة / الكتيبة / التشكيل العسكري
+  enlistmentDate?: string;          // تاريخ الالتحاق بالخدمة العسكرية / تاريخ التعيين
+  lastPromotionDate?: string;       // تاريخ آخر ترقية
+  militaryRegistryNo?: string;      // رقم السجل العسكري / الرقم الآلي
+  militarySpecialization?: string;  // التخصص العسكري الدقيق
+  stationLocation?: string;         // منطقة التمركز / الموقع العسكري
+  serviceStatus?: 'في الخدمة' | 'احتياط' | 'منتدب' | 'متقاعد' | 'إنهاء خدمة'; // حالة الخدمة العسكرية
+  militaryCourses?: string;         // الدورات العسكرية والتأهيل
+  medalsAndBadges?: string;         // الأوسمة والأنواط العسكرية
+  weaponNumber?: string;            // رقم السلاح العسكري الفردي / العهدة العسكرية
+  securityClearance?: string;       // بطاقة التعريف العسكرية / التصنيف الأمني
+  bloodType?: string;               // فصيلة الدم العسكرية
+  notes?: string;                   // ملاحظات عسكرية خاصة
+}
+
 export interface Employee {
   id: string;
   // Basic Info
@@ -233,7 +255,8 @@ export interface Employee {
   // System Data
   employeeId: string;
   fingerprintId?: string; // رقم البصمة في جهاز البصمة (Enroll ID / PIN)
-  employmentCategory?: 'موظف أساسي' | 'متعاقد' | 'متعاون';
+  employmentCategory?: 'ضابط' | 'ضابط صف' | 'موظف' | 'متعاون' | 'موظف أساسي' | 'متعاقد';
+  militaryInfo?: MilitaryInfo; // البيانات العسكرية للضباط وضباط الصف
   status: EmployeeStatus;
   performanceRating?: PerformanceRating;
   linkedUser: string;
@@ -263,6 +286,7 @@ export interface AttendanceRecord {
   id: string;
   employeeId: string;
   employeeName: string;
+  employeeNationalId?: string; // الرقم الوطني للموظف لمطابقة وعرض السجل بدقة
   date: string; // YYYY-MM-DD
   status: 'Present' | 'Late' | 'Absent' | 'Leave';
   movements: AttendanceMovement[];
@@ -276,6 +300,7 @@ export interface AttendanceRecord {
 export interface RawFingerprintPunch {
   pin: string;
   name?: string;
+  nationalId?: string;
   timestamp: Date;
   dateStr: string;
   timeStr: string;
@@ -289,6 +314,7 @@ export interface AttendanceImportPreviewRow {
   pin: string;
   matchedEmployeeId?: string;
   matchedEmployeeName?: string;
+  matchedEmployeeNationalId?: string; // الرقم الوطني للموظف المطابق
   originalNameInFile?: string;
   matchMethod: 'fingerprintId' | 'employeeId' | 'fullName' | 'nationalId' | 'manual' | 'none';
   date: string;

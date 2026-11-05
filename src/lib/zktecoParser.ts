@@ -44,62 +44,166 @@ export function minutesToTime(minutes: number): string {
 }
 
 /**
+ * دالة مساعدة لتطبيع الأرقام والمعرفات (الرقم الوطني، البصمة، المعرف الوظيفي)
+ * تدعم:
+ * - تحويل الأرقام العربية المشرقية (٠-٩) إلى أرقام لاتينية (0-9)
+ * - تنظيف التدوين العلمي من إكسل (مثل 1.2003041647E+11 إلى 120030416470)
+ * - إزالة اللواحق العشرية لإكسل (مثل 120030416470.0 إلى 120030416470)
+ * - إزالة المسافات والشرطات والفواصل
+ */
+export function normalizeId(val: any): string {
+  if (val === null || val === undefined) return '';
+  let str = String(val).trim();
+  if (!str) return '';
+
+  // تحويل الأرقام العربية المشرقية إلى أرقام لاتينية (٠-٩ إلى 0-9)
+  const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  for (let i = 0; i < 10; i++) {
+    str = str.split(arabicDigits[i]).join(String(i));
+  }
+
+  // معالجة الأرقام العشرية من إكسل مثل "120030416470.0"
+  if (/^\d+\.0+$/.test(str)) {
+    str = str.replace(/\.0+$/, '');
+  }
+
+  // معالجة التدوين العلمي من إكسل مثل "1.2003041647E+11" أو "1.20030416470e+11"
+  if (/^[+-]?\d+(\.\d+)?[eE][+-]?\d+$/.test(str)) {
+    try {
+      const num = Number(str);
+      if (!isNaN(num) && Number.isSafeInteger(Math.round(num))) {
+        str = BigInt(Math.round(num)).toString();
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  // حذف الفواصل والمسافات والشرطات الزائدة
+  return str.replace(/[\s\-_,]/g, '');
+}
+
+/**
  * مطابقة سجل البصمة مع الموظفين المسجلين في النظام
- * تدعم: رقم البصمة (fingerprintId)، الرقم الوظيفي (employeeId)، الاسم الكامل، أو الرقم الوطني
+ * الأولوية القصوى (#1): الرقم الوطني (National ID)
+ * ثم: رقم البصمة (fingerprintId) -> الرقم الوظيفي (employeeId) -> الرقم العسكري -> الاسم الكامل
  */
 export function matchEmployee(
   pin: string, 
   nameInFile: string | undefined, 
-  employees: Employee[]
-): { employee?: Employee; matchMethod: 'fingerprintId' | 'employeeId' | 'fullName' | 'nationalId' | 'none' } {
-  const cleanPin = pin ? pin.trim() : '';
-  const pinDigitsOnly = cleanPin.replace(/\D/g, '');
+  employees: Employee[],
+  fileNationalId?: string
+): { 
+  employee?: Employee; 
+  matchMethod: 'nationalId' | 'fingerprintId' | 'employeeId' | 'militaryNumber' | 'fullName' | 'none';
+  matchedNationalId?: string;
+} {
+  const normPin = normalizeId(pin);
+  const normFileNatId = normalizeId(fileNationalId);
+  const pinDigitsOnly = normPin.replace(/\D/g, '');
 
-  // 1. المطابقة برقم البصمة المعرف في النظام (fingerprintId)
-  if (cleanPin) {
-    const byFingerprint = employees.find(e => 
-      e.fingerprintId && (
-        e.fingerprintId.trim() === cleanPin ||
-        e.fingerprintId.trim().replace(/\D/g, '') === pinDigitsOnly
-      )
-    );
-    if (byFingerprint) {
-      return { employee: byFingerprint, matchMethod: 'fingerprintId' };
+  // 1. الأولوية القصوى (#1): المطابقة بالرقم الوطني للموظف (سواء كان في عمود مخصص أو هو معرف البصمة)
+  // مثال المستخدم: أحمد سميو رقمه الوطني 120030416470 وورد كمعرف في ملف البصمة
+  const candidateNatIds = [normFileNatId, normPin].filter(Boolean);
+  for (const cand of candidateNatIds) {
+    const candDigits = cand.replace(/\D/g, '');
+    if (!candDigits) continue;
+
+    const byNational = employees.find(e => {
+      if (!e.nationalId) return false;
+      const empNat = normalizeId(e.nationalId);
+      const empNatDigits = empNat.replace(/\D/g, '');
+      if (!empNatDigits) return false;
+
+      // مطابقة تامة للنص المطبع
+      if (empNat === cand) return true;
+      // مطابقة تامة للأرقام (12 رقماً في ليبيا مثلاً)
+      if (empNatDigits === candDigits) return true;
+      // مطابقة جزئية للأرقام إذا كانت 8 خانات فأكثر
+      if (candDigits.length >= 8 && empNatDigits.length >= 8 && (empNatDigits.endsWith(candDigits) || candDigits.endsWith(empNatDigits))) {
+        return true;
+      }
+      return false;
+    });
+
+    if (byNational) {
+      return { 
+        employee: byNational, 
+        matchMethod: 'nationalId',
+        matchedNationalId: byNational.nationalId
+      };
     }
   }
 
-  // 2. المطابقة بالرقم الوظيفي (employeeId)
-  if (cleanPin) {
+  // 2. المطابقة برقم البصمة المعرف في النظام (fingerprintId)
+  if (normPin) {
+    const byFingerprint = employees.find(e => {
+      if (!e.fingerprintId) return false;
+      const fpNorm = normalizeId(e.fingerprintId);
+      return (
+        fpNorm === normPin ||
+        (pinDigitsOnly && fpNorm.replace(/\D/g, '') === pinDigitsOnly)
+      );
+    });
+    if (byFingerprint) {
+      return { 
+        employee: byFingerprint, 
+        matchMethod: 'fingerprintId',
+        matchedNationalId: byFingerprint.nationalId 
+      };
+    }
+  }
+
+  // 3. المطابقة بالرقم الوظيفي (employeeId)
+  if (normPin) {
     const byEmpId = employees.find(e => {
       if (!e.employeeId) return false;
-      const empClean = e.employeeId.trim();
-      const empDigits = empClean.replace(/\D/g, '');
+      const empClean = normalizeId(e.employeeId);
       return (
-        empClean.toLowerCase() === cleanPin.toLowerCase() ||
-        (pinDigitsOnly && empDigits && empDigits === pinDigitsOnly)
+        empClean.toLowerCase() === normPin.toLowerCase() ||
+        (pinDigitsOnly && empClean.replace(/\D/g, '') === pinDigitsOnly)
       );
     });
     if (byEmpId) {
-      return { employee: byEmpId, matchMethod: 'employeeId' };
+      return { 
+        employee: byEmpId, 
+        matchMethod: 'employeeId',
+        matchedNationalId: byEmpId.nationalId 
+      };
     }
   }
 
-  // 3. المطابقة بالرقم الوطني إن وُجد
-  if (cleanPin && cleanPin.length >= 6) {
-    const byNational = employees.find(e => e.nationalId && e.nationalId.trim() === cleanPin);
-    if (byNational) {
-      return { employee: byNational, matchMethod: 'nationalId' };
+  // 4. المطابقة بالرقم العسكري (للضباط وضباط الصف)
+  if (normPin) {
+    const byMilitary = employees.find(e => {
+      if (!e.militaryNumber) return false;
+      const milClean = normalizeId(e.militaryNumber);
+      return (
+        milClean.toLowerCase() === normPin.toLowerCase() ||
+        (pinDigitsOnly && milClean.replace(/\D/g, '') === pinDigitsOnly)
+      );
+    });
+    if (byMilitary) {
+      return { 
+        employee: byMilitary, 
+        matchMethod: 'militaryNumber',
+        matchedNationalId: byMilitary.nationalId 
+      };
     }
   }
 
-  // 4. المطابقة بالاسم إن وُجد في الملف
+  // 5. المطابقة بالاسم إن وُجد في الملف
   if (nameInFile && nameInFile.trim()) {
     const normalizedTarget = normalizeArabicName(nameInFile);
     
     // مطابقة تامة
     const exactName = employees.find(e => normalizeArabicName(e.fullName) === normalizedTarget);
     if (exactName) {
-      return { employee: exactName, matchMethod: 'fullName' };
+      return { 
+        employee: exactName, 
+        matchMethod: 'fullName',
+        matchedNationalId: exactName.nationalId 
+      };
     }
 
     // مطابقة جزئية ذكية (إذا كان الاسم يتطابق بالكلمات الأساسية)
@@ -108,7 +212,11 @@ export function matchEmployee(
       return empNorm.includes(normalizedTarget) || normalizedTarget.includes(empNorm);
     });
     if (partialName) {
-      return { employee: partialName, matchMethod: 'fullName' };
+      return { 
+        employee: partialName, 
+        matchMethod: 'fullName',
+        matchedNationalId: partialName.nationalId 
+      };
     }
   }
 
@@ -282,6 +390,7 @@ export async function parseAttendanceFile(
   // البحث عن صف الترويسة (Header) ومطابقة الأعمدة
   let headerIndex = -1;
   let pinCol = -1;
+  let nationalIdCol = -1;
   let nameCol = -1;
   let dateTimeCol = -1;
   let dateCol = -1;
@@ -298,6 +407,9 @@ export async function parseAttendanceFile(
       const cell = String(row[c] || '').trim().toLowerCase();
       if (!cell) continue;
 
+      if (nationalIdCol === -1 && /(رقم.*وطني|الرقم.*الوطني|رقم.*الهوية|بطاقة.*شخصية|national.*id|nid|nat.*id)/i.test(cell)) {
+        nationalIdCol = c;
+      }
       if (pinCol === -1 && /رقم.*(موظف|بصمة|تسجيل|تعريفي|مستخدم)|pin|id|enroll|ac-no|emp.*id|user.*id|badge|no\b/i.test(cell)) {
         pinCol = c;
       }
@@ -324,7 +436,7 @@ export async function parseAttendanceFile(
       }
     }
 
-    if (pinCol !== -1 || nameCol !== -1 || (dateCol !== -1 && (timeCol !== -1 || checkInCol !== -1))) {
+    if (pinCol !== -1 || nationalIdCol !== -1 || nameCol !== -1 || (dateCol !== -1 && (timeCol !== -1 || checkInCol !== -1))) {
       headerIndex = i;
       break;
     }
@@ -332,8 +444,8 @@ export async function parseAttendanceFile(
 
   // إذا لم نجد ترويسة واضحة، نتعامل مع الملف كأعمدة افتراضية أو نجرب نمط ZKTeco
   const startIndex = headerIndex >= 0 ? headerIndex + 1 : 0;
-  if (pinCol === -1 && nameCol === -1) {
-    // تعيين افتراضي: العمود 0 = رقم الموظف، العمود 1 = التاريخ/الوقت
+  if (pinCol === -1 && nameCol === -1 && nationalIdCol === -1) {
+    // تعيين افتراضي: العمود 0 = رقم الموظف أو الوطني، العمود 1 = التاريخ/الوقت
     pinCol = 0;
     dateTimeCol = 1;
   }
@@ -342,10 +454,12 @@ export async function parseAttendanceFile(
     const row = rows[r];
     if (!row || row.length === 0) continue;
 
-    const rawPin = pinCol !== -1 ? String(row[pinCol] || '').trim() : '';
+    const rawNat = nationalIdCol !== -1 ? normalizeId(row[nationalIdCol]) : undefined;
+    const rawPin = pinCol !== -1 ? normalizeId(row[pinCol]) : (rawNat || '');
     const rawName = nameCol !== -1 ? String(row[nameCol] || '').trim() : undefined;
 
-    if (!rawPin && !rawName) continue;
+    const effectivePin = rawPin || rawNat || rawName || '';
+    if (!effectivePin && !rawName) continue;
 
     // حالة 1: وجود عمودي الحضور والانصراف المنفصلين في نفس الصف (Daily Summary Row)
     if (checkInCol !== -1 || checkOutCol !== -1) {
@@ -360,7 +474,8 @@ export async function parseAttendanceFile(
         const inDate = parseCombinedDateAndTime(dateStr, inVal);
         if (inDate) {
           punches.push({
-            pin: rawPin || rawName || '1',
+            pin: effectivePin || '1',
+            nationalId: rawNat,
             name: rawName,
             timestamp: inDate,
             dateStr,
@@ -374,7 +489,8 @@ export async function parseAttendanceFile(
         const outDate = parseCombinedDateAndTime(dateStr, outVal);
         if (outDate) {
           punches.push({
-            pin: rawPin || rawName || '1',
+            pin: effectivePin || '1',
+            nationalId: rawNat,
             name: rawName,
             timestamp: outDate,
             dateStr,
@@ -408,7 +524,8 @@ export async function parseAttendanceFile(
       }
 
       punches.push({
-        pin: rawPin || rawName || '',
+        pin: effectivePin,
+        nationalId: rawNat,
         name: rawName,
         timestamp: punchDate,
         dateStr: formatDateToYMD(punchDate),
@@ -506,6 +623,7 @@ export function processPunchesToPreview(
     const [pin, dateStr] = key.split('__');
     const firstPunch = groupPunches[0];
     const nameInFile = firstPunch?.name;
+    const fileNatId = firstPunch?.nationalId;
 
     // فرز الحركات زمنياً
     groupPunches.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
@@ -524,8 +642,8 @@ export function processPunchesToPreview(
       }
     }
 
-    // مطابقة الموظف
-    const match = matchEmployee(pin, nameInFile, employees);
+    // مطابقة الموظف مع إعطاء الأولوية القصوى للرقم الوطني
+    const match = matchEmployee(pin, nameInFile, employees, fileNatId);
     const matchedEmployee = match.employee;
     const matchMethod = match.matchMethod;
 
@@ -584,7 +702,11 @@ export function processPunchesToPreview(
     // التحقق من وجود سجل مسبق لنفس اليوم والموظف
     const existing = existingRecords.find(r => 
       r.date === dateStr && (
-        (matchedEmployee && (r.employeeId === matchedEmployee.id || r.employeeId === matchedEmployee.employeeId)) ||
+        (matchedEmployee && (
+          r.employeeId === matchedEmployee.id || 
+          r.employeeId === matchedEmployee.employeeId ||
+          (matchedEmployee.nationalId && r.employeeNationalId === matchedEmployee.nationalId)
+        )) ||
         r.employeeId === pin
       )
     );
@@ -594,6 +716,7 @@ export function processPunchesToPreview(
       pin,
       matchedEmployeeId: matchedEmployee?.id || (matchMethod === 'employeeId' ? pin : undefined),
       matchedEmployeeName: matchedEmployee?.fullName,
+      matchedEmployeeNationalId: match.matchedNationalId || matchedEmployee?.nationalId,
       originalNameInFile: nameInFile,
       matchMethod,
       date: dateStr,
@@ -683,6 +806,7 @@ export function applyAttendanceImport(
 
       recordMap.set(key, {
         ...existing,
+        employeeNationalId: row.matchedEmployeeNationalId || existing.employeeNationalId,
         status: delay > 0 ? 'Late' : 'Present',
         movements: combinedMovements,
         workHours,
@@ -696,6 +820,7 @@ export function applyAttendanceImport(
         id: existing?.id || `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         employeeId: empId,
         employeeName: empName,
+        employeeNationalId: row.matchedEmployeeNationalId || existing?.employeeNationalId,
         date: row.date,
         status: row.status,
         movements: row.movements,
@@ -729,19 +854,20 @@ export function generateSampleZkFile(
   const today = new Date();
   const dateStr = formatDateToYMD(today);
 
-  // استخدام أول 5 موظفين أو بيانات نموذجية
+  // استخدام أول 5 موظفين أو بيانات نموذجية مع توفير الرقم الوطني
   const sampleEmployees = employees.length > 0 
     ? employees.slice(0, 5) 
     : [
-        { id: '1', employeeId: '1', fullName: 'أحمد محمد علي', fingerprintId: '1' } as Employee,
-        { id: '2', employeeId: '2', fullName: 'سالم عبد الله', fingerprintId: '2' } as Employee,
-        { id: '3', employeeId: '3', fullName: 'فاطمة عمر', fingerprintId: '3' } as Employee
+        { id: '1', employeeId: 'EMP-01', nationalId: '120030416470', fullName: 'أحمد سميو', fingerprintId: '1' } as Employee,
+        { id: '2', employeeId: 'EMP-02', nationalId: '119950812345', fullName: 'سالم عبد الله', fingerprintId: '2' } as Employee,
+        { id: '3', employeeId: 'EMP-03', nationalId: '219980654321', fullName: 'فاطمة عمر', fingerprintId: '3' } as Employee
       ];
 
   if (formatType === 'dat' || formatType === 'txt') {
     let content = '';
     sampleEmployees.forEach((emp, index) => {
-      const pin = emp.fingerprintId || emp.employeeId || String(index + 1);
+      // نستخدم الرقم الوطني مباشرة إذا توفر لتمكين مطابقة الرقم الوطني فوراً
+      const pin = emp.nationalId || emp.fingerprintId || emp.employeeId || String(index + 1);
       // حركة دخول
       const inMinute = 15 + index * 10; // 08:15, 08:25, 08:35 (متأخر)
       const inTimeStr = `08:${String(inMinute).padStart(2, '0')}:12`;
@@ -758,12 +884,12 @@ export function generateSampleZkFile(
   }
 
   if (formatType === 'csv') {
-    let csv = '\uFEFFرقم الموظف,اسم الموظف,التاريخ,وقت الحضور,وقت الانصراف,الحالة\r\n';
+    let csv = '\uFEFFالرقم الوطني / المعرف,اسم الموظف,الرقم الوظيفي,التاريخ,وقت الحضور,وقت الانصراف,الحالة\r\n';
     sampleEmployees.forEach((emp, index) => {
-      const pin = emp.fingerprintId || emp.employeeId || String(index + 1);
+      const pin = emp.nationalId || emp.fingerprintId || emp.employeeId || String(index + 1);
       const inTime = `08:${String(20 + index * 10).padStart(2, '0')}`;
       const outTime = `16:${String(30 + index * 5).padStart(2, '0')}`;
-      csv += `"${pin}","${emp.fullName}","${dateStr}","${inTime}","${outTime}","حاضر"\r\n`;
+      csv += `"${pin}","${emp.fullName}","${emp.employeeId}","${dateStr}","${inTime}","${outTime}","حاضر"\r\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -772,13 +898,13 @@ export function generateSampleZkFile(
 
   // إكسل XLSX
   const rows = [
-    ['رقم الموظف', 'اسم الموظف', 'التاريخ', 'وقت الحضور', 'وقت الانصراف', 'الحالة']
+    ['الرقم الوطني / المعرف', 'اسم الموظف', 'الرقم الوظيفي', 'التاريخ', 'وقت الحضور', 'وقت الانصراف', 'الحالة']
   ];
   sampleEmployees.forEach((emp, index) => {
-    const pin = emp.fingerprintId || emp.employeeId || String(index + 1);
+    const pin = emp.nationalId || emp.fingerprintId || emp.employeeId || String(index + 1);
     const inTime = `08:${String(20 + index * 10).padStart(2, '0')}`;
     const outTime = `16:${String(30 + index * 5).padStart(2, '0')}`;
-    rows.push([pin, emp.fullName, dateStr, inTime, outTime, 'حاضر']);
+    rows.push([pin, emp.fullName, emp.employeeId, dateStr, inTime, outTime, 'حاضر']);
   });
 
   const ws = XLSX.utils.aoa_to_sheet(rows);

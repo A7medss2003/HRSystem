@@ -488,11 +488,12 @@ export default function ZKTecoImportModal({ isOpen, onClose, onSuccess }: ZKTeco
                   <HelpCircle size={16} />
                   <span>كيف يتعرف النظام على الموظفين من ملف البصمة؟</span>
                 </div>
-                <ul className="list-disc list-inside space-y-1 text-slate-600 pr-2">
-                  <li><strong>مطابقة برقم البصمة (Enroll ID / PIN):</strong> يُطابق الرقم المسجل في حقل "رقم البصمة في الجهاز" بملف الموظف.</li>
-                  <li><strong>مطابقة بالرقم الوظيفي:</strong> إذا كان رقم البصمة في الملف يطابق الرقم الوظيفي (مثل 1 أو 102 أو EMP-1).</li>
-                  <li><strong>مطابقة بالاسم الكامل:</strong> إذا كان ملف الإكسل يحتوي على عمود لأسماء الموظفين، يطابق النظام الاسم بدقة وذكاء مع تصحيح الهمزات والتاء المربوطة.</li>
-                  <li><strong>ربط يدوي سهل:</strong> إذا لم يتم التعرف على رقم معين، يتيح لك النظام ربطه فورياً بموظف وحفظ الرقم في ملفه بضغطة زر واحدة!</li>
+                <ul className="list-disc list-inside space-y-1.5 text-slate-600 pr-2">
+                  <li><strong className="text-purple-900">1. مطابقة بالرقم الوطني (الأولوية القصوى #1):</strong> يُقارن المعرف الوارد في الملف (أو عمود الرقم الوطني) مباشرة مع الرقم الوطني للموظفين (مثل 120030416470) ويربط السجل به تلقائياً.</li>
+                  <li><strong>2. مطابقة برقم البصمة (Enroll ID / PIN):</strong> يُطابق الرقم المسجل في حقل "رقم البصمة في الجهاز" بملف الموظف.</li>
+                  <li><strong>3. مطابقة بالرقم الوظيفي أو العسكري:</strong> إذا كان معرف البصمة يطابق الرقم الوظيفي أو الرقم العسكري.</li>
+                  <li><strong>4. مطابقة بالاسم الكامل:</strong> إذا كان ملف الإكسل يحتوي على عمود لأسماء الموظفين، يطابق النظام الاسم بدقة وذكاء مع تصحيح الهمزات والتاء المربوطة.</li>
+                  <li><strong>5. ربط يدوي سهل:</strong> إذا لم يتم التعرف على رقم معين، يتيح لك النظام ربطه فورياً بموظف وحفظ الرقم في ملفه بضغطة زر واحدة!</li>
                 </ul>
               </div>
 
@@ -664,9 +665,15 @@ export default function ZKTecoImportModal({ isOpen, onClose, onSuccess }: ZKTeco
                                     <span>{row.matchedEmployeeName}</span>
                                   </div>
                                   <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
-                                    <span>مطابقة: {
+                                    <span className="flex items-center gap-1">مطابقة: {
+                                      row.matchMethod === 'nationalId' ? (
+                                        <span className="bg-purple-100 text-purple-800 font-bold px-1.5 py-0.2 rounded border border-purple-200">
+                                          بالرقم الوطني {row.matchedEmployeeNationalId ? `(${row.matchedEmployeeNationalId})` : ''}
+                                        </span>
+                                      ) :
                                       row.matchMethod === 'fingerprintId' ? 'رقم البصمة' :
                                       row.matchMethod === 'employeeId' ? 'الرقم الوظيفي' :
+                                      row.matchMethod === 'militaryNumber' ? 'الرقم العسكري' :
                                       row.matchMethod === 'fullName' ? 'بالاسم' : 'يدوي'
                                     }</span>
                                     {row.matchedEmployeeId && (

@@ -70,7 +70,8 @@ export default function Attendance({ user }: { user: { role: string; username: s
         const matchesId = (r.employeeId || '').toLowerCase().includes(q);
         const matchesEmpId = emp?.employeeId?.toLowerCase().includes(q);
         const matchesFpId = emp?.fingerprintId?.toLowerCase().includes(q);
-        if (!matchesName && !matchesId && !matchesEmpId && !matchesFpId) return false;
+        const matchesNatId = (r.employeeNationalId || emp?.nationalId || '').toLowerCase().includes(q);
+        if (!matchesName && !matchesId && !matchesEmpId && !matchesFpId && !matchesNatId) return false;
       }
 
       // Status
@@ -160,10 +161,12 @@ export default function Attendance({ user }: { user: { role: string; username: s
       const sortedMoves = [...(r.movements || [])].sort((a, b) => a.minutesFromMidnight - b.minutesFromMidnight);
       const firstIn = sortedMoves[0]?.time || '—';
       const lastOut = sortedMoves.length > 1 ? sortedMoves[sortedMoves.length - 1]?.time : '—';
+      const natId = r.employeeNationalId || emp?.nationalId || '—';
 
       return {
         '#': index + 1,
         'اسم الموظف': r.employeeName,
+        'الرقم الوطني': natId,
         'الرقم الوظيفي': emp?.employeeId || r.employeeId,
         'رقم البصمة': emp?.fingerprintId || '—',
         'القسم': emp?.department || '—',
@@ -196,10 +199,12 @@ export default function Attendance({ user }: { user: { role: string; username: s
       const sortedMoves = [...(r.movements || [])].sort((a, b) => a.minutesFromMidnight - b.minutesFromMidnight);
       const firstIn = sortedMoves[0]?.time || '—';
       const lastOut = sortedMoves.length > 1 ? sortedMoves[sortedMoves.length - 1]?.time : '—';
+      const natId = r.employeeNationalId || emp?.nationalId || '—';
 
       return {
         '#': index + 1,
         'اسم الموظف': r.employeeName,
+        'الرقم الوطني': natId,
         'الرقم الوظيفي': emp?.employeeId || r.employeeId,
         'رقم البصمة': emp?.fingerprintId || '—',
         'القسم': emp?.department || '—',
@@ -427,7 +432,7 @@ export default function Attendance({ user }: { user: { role: string; username: s
             <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
               type="text" 
-              placeholder="البحث بالاسم، الرقم الوظيفي، أو رقم البصمة..."
+              placeholder="البحث بالاسم، الرقم الوطني، الرقم الوظيفي، أو رقم البصمة..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-4 pr-10 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs bg-slate-50 focus:bg-white transition-all"
@@ -572,8 +577,13 @@ export default function Attendance({ user }: { user: { role: string; username: s
                       {/* Employee */}
                       <td className="py-3.5 px-5">
                         <div className="font-bold text-slate-800 text-sm">{r.employeeName}</div>
-                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500 font-mono">
+                        <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-500 font-mono flex-wrap">
                           <span>{emp?.employeeId || r.employeeId}</span>
+                          {(r.employeeNationalId || emp?.nationalId) && (
+                            <span className="bg-purple-50 text-purple-700 px-1.5 py-0.2 rounded border border-purple-200 text-[10px] font-semibold" title="الرقم الوطني">
+                              وطني: {r.employeeNationalId || emp?.nationalId}
+                            </span>
+                          )}
                           {emp?.fingerprintId && (
                             <span className="bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded border border-blue-200 text-[10px]">
                               بصمة: {emp.fingerprintId}

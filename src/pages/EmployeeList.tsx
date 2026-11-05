@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Search, Plus, Filter, FileSpreadsheet, ChevronLeft, Star, X, Save, Gift, Trash2, Phone, Mail, Eye, ArrowUpDown, Landmark, Users, AlertCircle, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Search, Plus, Filter, FileSpreadsheet, ChevronLeft, ChevronDown, Shield, Star, X, Save, Gift, Trash2, Phone, Mail, Eye, ArrowUpDown, Landmark, Users, AlertCircle, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
 import clsx from 'clsx';
 import { EmployeeStatus, Employee } from '../types';
 import { toast } from '../components/Toast';
@@ -14,7 +14,7 @@ interface EmployeeListProps {
   user?: { role: string; username: string; permissions: string[] };
   userRole: string;
   onSelectEmployee: (id: string) => void;
-  onAddEmployee: (initialCategory?: 'موظف أساسي' | 'متعاقد' | 'متعاون') => void;
+  onAddEmployee: (initialCategory?: 'ضابط' | 'ضابط صف' | 'موظف' | 'متعاون' | 'موظف أساسي' | 'متعاقد') => void;
 }
 
 export default function EmployeeList({ user, userRole, onSelectEmployee, onAddEmployee }: EmployeeListProps) {
@@ -34,6 +34,18 @@ export default function EmployeeList({ user, userRole, onSelectEmployee, onAddEm
   const [auditFilter, setAuditFilter] = useState<'all' | 'missing' | 'expired' | 'complete'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'name' | 'department'>('newest');
   const [showFilters, setShowFilters] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(event.target as Node)) {
+        setShowAddMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const [bonusModalEmp, setBonusModalEmp] = useState<Employee | null>(null);
   const [bonusForm, setBonusForm] = useState({
@@ -267,20 +279,109 @@ export default function EmployeeList({ user, userRole, onSelectEmployee, onAddEm
               <FileSpreadsheet size={16} />
               استيراد من CSV
             </button>
-            <button 
-              onClick={() => onAddEmployee('موظف أساسي')}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium shadow-sm shadow-blue-200 cursor-pointer"
-            >
-              <Plus size={16} />
-              إضافة موظف
-            </button>
-            <button 
-              onClick={() => onAddEmployee('متعاون')}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 text-sm font-medium shadow-sm shadow-indigo-200 cursor-pointer"
-            >
-              <Plus size={16} />
-              إضافة متعاون
-            </button>
+            {/* القائمة المنسدلة: إضافة منتسب */}
+            <div className="relative" ref={addMenuRef}>
+              <button 
+                type="button"
+                onClick={() => setShowAddMenu(prev => !prev)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all flex items-center gap-2 text-sm font-semibold shadow-sm shadow-blue-200 cursor-pointer active:scale-98"
+                id="add-personnel-button"
+                aria-expanded={showAddMenu}
+                aria-haspopup="true"
+              >
+                <Plus size={16} />
+                <span>إضافة منتسب</span>
+                <ChevronDown size={15} className={clsx("transition-transform duration-200", showAddMenu && "rotate-180")} />
+              </button>
+
+              {showAddMenu && (
+                <div 
+                  className="absolute left-0 mt-2 w-60 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150"
+                  role="menu"
+                >
+                  <div className="px-3.5 py-2 text-[11px] font-bold text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                    <span>اختر صفة المنتسب:</span>
+                    <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">4 خيارات</span>
+                  </div>
+
+                  {/* 1 - ضابط */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddMenu(false);
+                      onAddEmployee('ضابط');
+                    }}
+                    className="w-full text-right px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-900 flex items-center justify-between transition-colors group cursor-pointer"
+                    role="menuitem"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold flex items-center justify-center group-hover:bg-amber-200 transition-colors">1</span>
+                      <span className="text-sm font-bold text-slate-800 group-hover:text-amber-900">ضابط</span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-200">
+                      عسكري
+                    </span>
+                  </button>
+
+                  {/* 2 - ضابط صف */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddMenu(false);
+                      onAddEmployee('ضابط صف');
+                    }}
+                    className="w-full text-right px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-900 flex items-center justify-between transition-colors group cursor-pointer border-t border-slate-100"
+                    role="menuitem"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold flex items-center justify-center group-hover:bg-emerald-200 transition-colors">2</span>
+                      <span className="text-sm font-bold text-slate-800 group-hover:text-emerald-900">ضابط صف</span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
+                      عسكري
+                    </span>
+                  </button>
+
+                  {/* 3 - موظف */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddMenu(false);
+                      onAddEmployee('موظف');
+                    }}
+                    className="w-full text-right px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-900 flex items-center justify-between transition-colors group cursor-pointer border-t border-slate-100"
+                    role="menuitem"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-800 text-[11px] font-bold flex items-center justify-center group-hover:bg-blue-200 transition-colors">3</span>
+                      <span className="text-sm font-bold text-slate-800 group-hover:text-blue-900">موظف</span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold border border-blue-200">
+                      مدني
+                    </span>
+                  </button>
+
+                  {/* 4 - متعاون */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddMenu(false);
+                      onAddEmployee('متعاون');
+                    }}
+                    className="w-full text-right px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 flex items-center justify-between transition-colors group cursor-pointer border-t border-slate-100"
+                    role="menuitem"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-800 text-[11px] font-bold flex items-center justify-center group-hover:bg-indigo-200 transition-colors">4</span>
+                      <span className="text-sm font-bold text-slate-800 group-hover:text-indigo-900">متعاون</span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-bold border border-indigo-200">
+                      مكافآت
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -460,6 +561,9 @@ export default function EmployeeList({ user, userRole, onSelectEmployee, onAddEm
                 className="bg-white border border-slate-200 rounded-lg text-xs p-2 outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">جميع الفئات</option>
+                <option value="ضابط">ضابط (عسكري)</option>
+                <option value="ضابط صف">ضابط صف (عسكري)</option>
+                <option value="موظف">موظف (مدني)</option>
                 <option value="موظف أساسي">موظف أساسي</option>
                 <option value="متعاقد">متعاقد</option>
                 <option value="متعاون">متعاون</option>
@@ -611,15 +715,33 @@ export default function EmployeeList({ user, userRole, onSelectEmployee, onAddEm
                   <td className="px-4 py-3.5">
                     <div className="flex flex-col gap-1">
                       <span className={clsx(
-                        "px-2 py-0.5 rounded text-[11px] font-bold w-fit border",
-                        emp.employmentCategory === 'متعاون' 
+                        "px-2 py-0.5 rounded text-[11px] font-bold w-fit border inline-flex items-center gap-1",
+                        emp.employmentCategory === 'ضابط'
+                          ? "bg-amber-50 text-amber-900 border-amber-300"
+                          : emp.employmentCategory === 'ضابط صف'
+                          ? "bg-emerald-50 text-emerald-900 border-emerald-300"
+                          : emp.employmentCategory === 'متعاون' 
                           ? "bg-indigo-50 text-indigo-700 border-indigo-200" 
                           : emp.employmentCategory === 'متعاقد'
-                          ? "bg-amber-50 text-amber-700 border-amber-200"
+                          ? "bg-orange-50 text-orange-700 border-orange-200"
                           : "bg-blue-50 text-blue-700 border-blue-200"
                       )}>
-                        {emp.employmentCategory || 'موظف أساسي'}
+                        {(emp.employmentCategory === 'ضابط' || emp.employmentCategory === 'ضابط صف') && (
+                          <Shield size={11} className={emp.employmentCategory === 'ضابط' ? "text-amber-600" : "text-emerald-600"} />
+                        )}
+                        {emp.employmentCategory || 'موظف'}
                       </span>
+                      {emp.militaryInfo?.rank && (
+                        <span className="text-[10px] text-slate-600 font-semibold flex items-center gap-1">
+                          <span>الرتبة:</span>
+                          <strong className="text-slate-800">{emp.militaryInfo.rank}</strong>
+                        </span>
+                      )}
+                      {emp.militaryInfo?.militaryNumber && !emp.militaryInfo?.rank && (
+                        <span className="text-[10px] text-slate-500 font-mono" dir="ltr">
+                          #{emp.militaryInfo.militaryNumber}
+                        </span>
+                      )}
                       {emp.employmentCategory === 'متعاون' && (
                         <div className="flex items-center gap-1.5 mt-0.5">
                           {emp.bonuses && emp.bonuses.length > 0 ? (
@@ -739,11 +861,11 @@ export default function EmployeeList({ user, userRole, onSelectEmployee, onAddEm
                       {visibleEmployees.length === 0 && canAddEmployee && (
                         <button
                           type="button"
-                          onClick={() => onAddEmployee('موظف أساسي')}
+                          onClick={() => onAddEmployee('موظف')}
                           className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm shadow-blue-200"
                         >
                           <Plus size={15} />
-                          إضافة أول موظف الآن
+                          إضافة أول منتسب الآن
                         </button>
                       )}
                     </div>

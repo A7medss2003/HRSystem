@@ -38,7 +38,7 @@ export default function Layout({ user, onLogout }: { user: { role: string, usern
   const [currentMenu, setCurrentMenu] = useState(getDefaultMenu);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
-  const [addingCategory, setAddingCategory] = useState<'موظف أساسي' | 'متعاقد' | 'متعاون'>('موظف أساسي');
+  const [addingCategory, setAddingCategory] = useState<'ضابط' | 'ضابط صف' | 'موظف' | 'متعاون' | 'موظف أساسي' | 'متعاقد'>('موظف');
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Sync menu if user permissions change and current menu is no longer accessible
@@ -162,7 +162,7 @@ export default function Layout({ user, onLogout }: { user: { role: string, usern
           user={user}
           userRole={user.role}
           onSelectEmployee={(id) => setSelectedEmployeeId(id)} 
-          onAddEmployee={(cat = 'موظف أساسي') => {
+          onAddEmployee={(cat = 'موظف') => {
             setAddingCategory(cat);
             setIsAdding(true);
           }}

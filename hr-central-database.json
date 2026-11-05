@@ -97,6 +97,38 @@
       "userName": "dev",
       "action": "تسجيل الدخول",
       "details": "قام المستخدم بتسجيل الدخول للنظام",
+      "id": "log-1793845352083r5g",
+      "timestamp": "2026-11-05T02:22:32.083Z"
+    },
+    {
+      "userId": "dev",
+      "userName": "dev",
+      "action": "تسجيل الدخول",
+      "details": "قام المستخدم بتسجيل الدخول للنظام",
+      "id": "log-1793844548383o2e",
+      "timestamp": "2026-11-05T02:09:08.384Z"
+    },
+    {
+      "userId": "dev",
+      "userName": "dev",
+      "action": "تسجيل الدخول",
+      "details": "قام المستخدم بتسجيل الدخول للنظام",
+      "id": "log-17938438953293vw",
+      "timestamp": "2026-11-05T01:58:15.329Z"
+    },
+    {
+      "userId": "dev",
+      "userName": "dev",
+      "action": "تسجيل الدخول",
+      "details": "قام المستخدم بتسجيل الدخول للنظام",
+      "id": "log-17938438732879i0",
+      "timestamp": "2026-11-05T01:57:53.287Z"
+    },
+    {
+      "userId": "dev",
+      "userName": "dev",
+      "action": "تسجيل الدخول",
+      "details": "قام المستخدم بتسجيل الدخول للنظام",
       "id": "log-1793446458439t92",
       "timestamp": "2026-10-31T11:34:18.439Z"
     },
@@ -120,6 +152,6 @@
   },
   "recoveryCodes": [],
   "backupPath": "D:\\HR_Backup",
-  "lastBackupDate": "2026-10-31T11:53:09.608Z",
-  "lastUpdated": "2026-10-31T11:53:09.610Z"
+  "lastBackupDate": "2026-11-05T02:26:57.458Z",
+  "lastUpdated": "2026-11-05T02:26:57.459Z"
 }

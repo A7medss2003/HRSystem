@@ -48,6 +48,7 @@ export default function EmployeePrintModal({
   const [sections, setSections] = useState({
     personal: true,
     work: true,
+    military: true,
     bank: true,
     education: true,
     experience: true,
@@ -90,6 +91,7 @@ export default function EmployeePrintModal({
     setSections({
       personal: val,
       work: val,
+      military: val,
       bank: val,
       education: val,
       experience: val,
@@ -105,6 +107,7 @@ export default function EmployeePrintModal({
     setSections({
       personal: true,
       work: true,
+      military: true,
       bank: false,
       education: false,
       experience: false,
@@ -261,6 +264,9 @@ export default function EmployeePrintModal({
   const sectionItems = [
     { id: 'personal', label: 'البيانات الشخصية والأساسية', icon: User, desc: 'تاريخ الميلاد، الجنسية، الهاتف، العنوان' },
     { id: 'work', label: 'معلومات الوظيفة والعمل', icon: Briefcase, desc: 'المسمى، الإدارة، تاريخ التعيين، الراتب' },
+    ...(employee.employmentCategory === 'ضابط' || employee.employmentCategory === 'ضابط صف' ? [
+      { id: 'military', label: 'البيانات العسكرية وسجل الخدمة', icon: ShieldCheck, desc: 'الرقم العسكري، الرتبة، السلاح، التشكيل، التمركز' }
+    ] : []),
     { id: 'bank', label: 'بيانات المصرف والحساب البنكي', icon: CreditCard, desc: 'اسم المصرف، رقم الحساب، IBAN' },
     { id: 'education', label: 'المؤهلات العلمية والشهادات', icon: GraduationCap, desc: 'الدرجة، التخصص، الكلية، سنة التخرج' },
     { id: 'experience', label: 'الخبرات المهنية السابقة', icon: Award, desc: 'الشركات، المناصب السابقة، الفترات' },
@@ -561,6 +567,40 @@ export default function EmployeePrintModal({
                       <div className="data-item"><div className="data-label text-slate-500 font-medium">الراتب الأساسي:</div><div className="data-value font-bold font-mono text-blue-700">{employee.contracts?.[0]?.basicSalary ? `${Number(employee.contracts[0].basicSalary).toLocaleString()} د.ل` : '-'}</div></div>
                       <div className="data-item"><div className="data-label text-slate-500 font-medium">طبيعة العمل:</div><div className="data-value font-bold font-mono">{employee.remoteWorkType || 'مكتب'}</div></div>
                       <div className="data-item"><div className="data-label text-slate-500 font-medium">المسؤول المباشر:</div><div className="data-value font-bold">{employee.directManager || '-'}</div></div>
+                    </div>
+                  </div>
+                )}
+
+                {/* SECTION: Military Service Information */}
+                {sections.military && (employee.employmentCategory === 'ضابط' || employee.employmentCategory === 'ضابط صف') && (
+                  <div className="section-box border border-slate-200 rounded-lg mb-4 overflow-hidden">
+                    <div className="section-head bg-amber-50/80 px-3 py-1.5 font-bold text-xs text-amber-950 border-b border-amber-200 flex items-center justify-between">
+                      <span>البيانات العسكرية وسجل الخدمة ({employee.employmentCategory || 'عسكري'})</span>
+                      {employee.militaryInfo?.serviceStatus && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-white text-slate-700 font-semibold border border-amber-200">
+                          {employee.militaryInfo.serviceStatus}
+                        </span>
+                      )}
+                    </div>
+                    <div className="data-grid-3 grid grid-cols-3 gap-3 p-3 text-xs">
+                      <div className="data-item"><div className="data-label text-slate-500 font-medium">الرقم العسكري:</div><div className="data-value font-bold font-mono text-amber-900" dir="ltr">{employee.militaryInfo?.militaryNumber || '-'}</div></div>
+                      <div className="data-item"><div className="data-label text-slate-500 font-medium">الرتبة الحالية:</div><div className="data-value font-bold text-slate-900">{employee.militaryInfo?.rank || '-'}</div></div>
+                      <div className="data-item"><div className="data-label text-slate-500 font-medium">الرتبة السابقة:</div><div className="data-value font-bold">{employee.militaryInfo?.previousRank || '-'}</div></div>
+                      <div className="data-item"><div className="data-label text-slate-500 font-medium">السلاح / الصنف:</div><div className="data-value font-bold">{employee.militaryInfo?.corps || '-'}</div></div>
+                      <div className="data-item"><div className="data-label text-slate-500 font-medium">الوحدة / الكتيبة:</div><div className="data-value font-bold">{employee.militaryInfo?.unit || '-'}</div></div>
+                      <div className="data-item"><div className="data-label text-slate-500 font-medium">التخصص العسكري:</div><div className="data-value font-bold">{employee.militaryInfo?.militarySpecialization || '-'}</div></div>
+                      <div className="data-item"><div className="data-label text-slate-500 font-medium">تاريخ الالتحاق بالخدمة:</div><div className="data-value font-bold font-mono">{employee.militaryInfo?.enlistmentDate || '-'}</div></div>
+                      <div className="data-item"><div className="data-label text-slate-500 font-medium">تاريخ آخر ترقية:</div><div className="data-value font-bold font-mono">{employee.militaryInfo?.lastPromotionDate || '-'}</div></div>
+                      <div className="data-item"><div className="data-label text-slate-500 font-medium">رقم السجل العسكري:</div><div className="data-value font-bold font-mono" dir="ltr">{employee.militaryInfo?.militaryRegistryNo || '-'}</div></div>
+                      <div className="data-item"><div className="data-label text-slate-500 font-medium">منطقة التمركز / الموقع:</div><div className="data-value font-bold">{employee.militaryInfo?.stationLocation || '-'}</div></div>
+                      <div className="data-item"><div className="data-label text-slate-500 font-medium">رقم السلاح الفردي:</div><div className="data-value font-bold font-mono" dir="ltr">{employee.militaryInfo?.weaponNumber || '-'}</div></div>
+                      <div className="data-item"><div className="data-label text-slate-500 font-medium">فصيلة الدم العسكرية:</div><div className="data-value font-bold font-mono">{employee.militaryInfo?.bloodType || '-'}</div></div>
+                      {employee.militaryInfo?.militaryCourses && (
+                        <div className="data-item col-span-3"><div className="data-label text-slate-500 font-medium">الدورات والتأهيل:</div><div className="data-value font-bold text-slate-800">{employee.militaryInfo.militaryCourses}</div></div>
+                      )}
+                      {employee.militaryInfo?.medalsAndBadges && (
+                        <div className="data-item col-span-3"><div className="data-label text-slate-500 font-medium">الأوسمة والأنواط:</div><div className="data-value font-bold text-slate-800">{employee.militaryInfo.medalsAndBadges}</div></div>
+                      )}
                     </div>
                   </div>
                 )}

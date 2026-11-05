@@ -116,6 +116,7 @@ export default function AttendanceRecordModal({
       id: record?.id || 'att-' + Date.now(),
       employeeId: selectedEmpId,
       employeeName: empName,
+      employeeNationalId: emp?.nationalId || record?.employeeNationalId,
       date,
       status,
       movements: sortedMoves,

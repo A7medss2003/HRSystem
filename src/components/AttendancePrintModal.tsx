@@ -335,8 +335,13 @@ export default function AttendancePrintModal({
                           <td className="py-2 px-3 border-l border-slate-200 text-center font-mono text-slate-500">
                             {index + 1}
                           </td>
-                          <td className="py-2 px-3 border-l border-slate-200 font-bold text-slate-900">
-                            {r.employeeName}
+                          <td className="py-2 px-3 border-l border-slate-200">
+                            <div className="font-bold text-slate-900">{r.employeeName}</div>
+                            {(r.employeeNationalId || emp?.nationalId) && (
+                              <div className="text-[10px] text-slate-500 font-mono">
+                                وطني: {r.employeeNationalId || emp?.nationalId}
+                              </div>
+                            )}
                           </td>
                           <td className="py-2 px-3 border-l border-slate-200 font-mono text-slate-600">
                             {emp?.employeeId || r.employeeId || '—'}

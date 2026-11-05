@@ -3,7 +3,7 @@ import { ArrowRight, Shield, Save, X, Building, Mail, Phone, MapPin, Briefcase, 
 import clsx from 'clsx';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
-import { Employee, Education, Experience, Skill, Contract, Certification, Equipment, Document, DocumentCategory, AuditLog, CustomField, GlobalCustomField } from '../types';
+import { Employee, MilitaryInfo, Education, Experience, Skill, Contract, Certification, Equipment, Document, DocumentCategory, AuditLog, CustomField, GlobalCustomField } from '../types';
 import { toast } from '../components/Toast';
 import { validatePassword } from '../lib/validators';
 import { useStore } from '../store';
@@ -26,7 +26,7 @@ interface EmployeeDetailProps {
   employee: Employee | null;
   onBack: () => void;
   onSave: (employee: Employee) => void;
-  initialCategory?: 'موظف أساسي' | 'متعاقد' | 'متعاون';
+  initialCategory?: 'ضابط' | 'ضابط صف' | 'موظف' | 'متعاون' | 'موظف أساسي' | 'متعاقد';
 }
 
 const checkDateExpiry = (valStr: string) => {
@@ -109,6 +109,25 @@ const defaultEmployee: Employee = {
   documents: [],
   auditLogs: [],
   customFields: [],
+  militaryInfo: {
+    militaryNumber: '',
+    rank: '',
+    previousRank: '',
+    corps: '',
+    unit: '',
+    enlistmentDate: '',
+    lastPromotionDate: '',
+    militaryRegistryNo: '',
+    militarySpecialization: '',
+    stationLocation: '',
+    serviceStatus: 'في الخدمة',
+    militaryCourses: '',
+    medalsAndBadges: '',
+    weaponNumber: '',
+    securityClearance: '',
+    bloodType: '',
+    notes: ''
+  },
 };
 
 const InputField = ({ 
@@ -391,7 +410,9 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
     return `HR-${currentYear}-${String(maxId + 1).padStart(4, '0')}`;
   };
 
-  const [activeTab, setActiveTab] = useState('basic');
+  const [activeTab, setActiveTab] = useState(
+    (initialCategory === 'ضابط' || initialCategory === 'ضابط صف') ? 'military' : 'basic'
+  );
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [showFieldRequirementsModal, setShowFieldRequirementsModal] = useState(false);
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -445,15 +466,31 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
   };
 
   const [formData, setFormData] = useState<Employee>(() => {
-    if (employee) return { ...employee };
+    if (employee) {
+      return {
+        ...employee,
+        militaryInfo: employee.militaryInfo || { ...defaultEmployee.militaryInfo! }
+      };
+    }
     return {
       ...defaultEmployee,
       id: 'emp-' + Date.now(),
       employeeId: generateNextEmployeeId(),
-      employmentCategory: initialCategory || 'موظف أساسي'
+      employmentCategory: initialCategory || 'موظف'
     };
   });
   const [initialBonus, setInitialBonus] = useState<string>('');
+
+  const handleMilitaryChange = (field: keyof MilitaryInfo, value: any) => {
+    if (readOnly) return;
+    setFormData(prev => ({
+      ...prev,
+      militaryInfo: {
+        ...(prev.militaryInfo || {}),
+        [field]: value
+      }
+    }));
+  };
   
   const isAdmin = user?.role === 'admin' || user?.role === 'developer' || user?.permissions?.includes('all');
 
@@ -781,6 +818,9 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
 
   const handleChange = (field: keyof Employee, value: any) => {
     if (readOnly) return;
+    if (field === 'employmentCategory' && value !== 'ضابط' && value !== 'ضابط صف' && activeTab === 'military') {
+      setActiveTab('basic');
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -873,9 +913,17 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
     toast('تم حفظ بيانات الموظف بنجاح!');
   };
 
+  const isMilitaryCategory = formData.employmentCategory === 'ضابط' || formData.employmentCategory === 'ضابط صف';
+
   const tabs = [
     { id: 'basic', label: 'المعلومات الأساسية', icon: UserIcon },
     { id: 'work', label: 'معلومات العمل', icon: Building },
+    ...(isMilitaryCategory ? [{ 
+      id: 'military', 
+      label: 'البيانات العسكرية', 
+      icon: Shield,
+      badge: formData.employmentCategory === 'ضابط' ? 'ضابط' : 'ضابط صف'
+    }] : []),
     { id: 'personal', label: 'المعلومات الشخصية', icon: Contact },
     { id: 'bank', label: 'بيانات المصرف', icon: Landmark },
     { id: 'education', label: 'المؤهل العلمي', icon: GraduationCap },
@@ -892,7 +940,85 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
   // Helper arrays for Select options
   const roleOptions = (roles || []).map(r => ({ value: r.id, label: r.name }));
   const statusOptions = ['نشط', 'إجازة', 'موقوف', 'متقاعد', 'مستقيل'].map(v => ({ value: v, label: v }));
-  const employmentCategoryOptions = ['موظف أساسي', 'متعاقد', 'متعاون'].map(v => ({ value: v, label: v }));
+  const employmentCategoryOptions = [
+    { value: 'ضابط', label: 'ضابط (عسكري)' },
+    { value: 'ضابط صف', label: 'ضابط صف (عسكري)' },
+    { value: 'موظف', label: 'موظف (مدني)' },
+    { value: 'موظف أساسي', label: 'موظف أساسي' },
+    { value: 'متعاقد', label: 'متعاقد' },
+    { value: 'متعاون', label: 'متعاون' },
+  ];
+
+  // رتب الضباط (من ملازم إلى مشير)
+  const officerRanks = [
+    'ملازم',
+    'ملازم أول',
+    'نقيب',
+    'رائد',
+    'مقدم',
+    'عقيد',
+    'عميد',
+    'لواء',
+    'فريق',
+    'فريق أول',
+    'مشير'
+  ];
+
+  // رتب ضباط الصف والجنود
+  const ncoRanks = [
+    'جندي',
+    'جندي أول',
+    'عريف',
+    'رقيب',
+    'رقيب أول',
+    'مساعد',
+    'مساعد أول',
+    'رئيس عرفاء',
+    'رئيس عرفاء سرية',
+    'رئيس عرفاء وحدة'
+  ];
+
+  // الصنف / السلاح العسكري
+  const militaryCorpsOptions = [
+    'مشاة',
+    'دروع وقوات مدرعة',
+    'صاعقة وقوات خاصة',
+    'مدفعية وصواريخ',
+    'هندسة عسكرية',
+    'مخابرة وإشارة عسكرية',
+    'دفاع جوي',
+    'سلاح الجو والطيران',
+    'قوات بحرية وضفادع بشرية',
+    'شرطة عسكرية',
+    'استخبارات واستطلاع عسكري',
+    'إمداد وتموين',
+    'طبابة وخدمات طبية عسكرية',
+    'إدارة وتنظيم وتسليح',
+    'حرس منشآت ومواقع حيوية',
+    'حرس حدود',
+    'أمن وحماية'
+  ];
+
+  // حالة الخدمة العسكرية
+  const militaryServiceStatusOptions = [
+    { value: 'في الخدمة', label: 'في الخدمة الفعلية' },
+    { value: 'احتياط', label: 'قوات الاحتياط' },
+    { value: 'منتدب', label: 'منتدب لجهة أخرى' },
+    { value: 'متقاعد', label: 'متقاعد عسكري' },
+    { value: 'إنهاء خدمة', label: 'إنهاء خدمة / استيداع' }
+  ];
+
+  // فصيلة الدم
+  const militaryBloodTypeOptions = [
+    { value: 'O+', label: 'O+ (موجب)' },
+    { value: 'A+', label: 'A+ (موجب)' },
+    { value: 'B+', label: 'B+ (موجب)' },
+    { value: 'AB+', label: 'AB+ (موجب)' },
+    { value: 'O-', label: 'O- (سالب)' },
+    { value: 'A-', label: 'A- (سالب)' },
+    { value: 'B-', label: 'B- (سالب)' },
+    { value: 'AB-', label: 'AB- (سالب)' }
+  ];
   const genderOptions = ['ذكر', 'أنثى'].map(v => ({ value: v, label: v }));
   const maritalOptions = ['أعزب', 'متزوج', 'مطلق', 'أرمل'].map(v => ({ value: v, label: v }));
   const remoteOptions = ['مكتب', 'منزل', 'مختلط'].map(v => ({ value: v, label: v }));
@@ -1353,6 +1479,16 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
                 >
                   <Icon size={18} className={isActive ? 'text-blue-600' : 'text-slate-400'} />
                   <span className="flex-1">{tab.label}</span>
+                  {(tab as any).badge && (
+                    <span className={clsx(
+                      "text-[10px] font-bold px-1.5 py-0.5 rounded-full border shrink-0",
+                      (tab as any).badge === 'ضابط'
+                        ? "bg-amber-100 text-amber-900 border-amber-300"
+                        : "bg-emerald-100 text-emerald-900 border-emerald-300"
+                    )}>
+                      {(tab as any).badge}
+                    </span>
+                  )}
                   {missingCountInTab > 0 && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200 shrink-0 shadow-2xs">
                       {missingCountInTab} ناقص
@@ -1438,7 +1574,7 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                 <SelectField readOnly={readOnly} fieldKey="status" isRequired={isReq('status')} isAdmin={isAdmin} onToggleRequired={toggleFieldReq} label="حالة الموظف" value={formData.status} onChange={(v: any) => handleChange('status', v)} options={statusOptions} />
-                <SelectField readOnly={readOnly} fieldKey="employmentCategory" isRequired={isReq('employmentCategory')} isAdmin={isAdmin} onToggleRequired={toggleFieldReq} label="فئة التوظيف" value={formData.employmentCategory || 'موظف أساسي'} onChange={(v: any) => handleChange('employmentCategory', v)} options={employmentCategoryOptions} />
+                <SelectField readOnly={readOnly} fieldKey="employmentCategory" isRequired={isReq('employmentCategory')} isAdmin={isAdmin} onToggleRequired={toggleFieldReq} label="فئة التوظيف" value={formData.employmentCategory || 'موظف'} onChange={(v: any) => handleChange('employmentCategory', v)} options={employmentCategoryOptions} />
                 
                 {formData.employmentCategory === 'متعاون' && !employee && (
                   <div className="md:col-span-2 bg-indigo-50/50 border border-indigo-100 p-4 rounded-xl">
@@ -1512,6 +1648,343 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
               {/* Custom fields work */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 border-t border-slate-100 pt-6">
                 {renderCustomFields('work')}
+              </div>
+            </div>
+          )}
+
+          {/* TAB: Military Info (البيانات العسكرية) */}
+          {activeTab === 'military' && isMilitaryCategory && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {/* Header Box */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gradient-to-r from-amber-50/70 via-slate-50 to-emerald-50/70 p-5 rounded-xl border border-amber-200/80 shadow-2xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
+                    <Shield size={26} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-xl font-bold text-slate-800">
+                        البيانات العسكرية
+                      </h2>
+                      <span className={clsx(
+                        "text-xs font-bold px-2.5 py-0.5 rounded-full border",
+                        formData.employmentCategory === 'ضابط'
+                          ? "bg-amber-100 text-amber-900 border-amber-300"
+                          : formData.employmentCategory === 'ضابط صف'
+                          ? "bg-emerald-100 text-emerald-900 border-emerald-300"
+                          : "bg-blue-100 text-blue-900 border-blue-200"
+                      )}>
+                        {formData.employmentCategory === 'ضابط' ? 'سجل ضابط' : formData.employmentCategory === 'ضابط صف' ? 'سجل ضابط صف' : 'سجل عسكري'}
+                      </span>
+                      {formData.militaryInfo?.serviceStatus && (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200 shadow-2xs">
+                          {formData.militaryInfo.serviceStatus}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      توثيق الرقم العسكري، الرتبة الحالية والسابقة، السلاح، التشكيل والوحدة، التمركز، التسليح، والدورات العسكرية.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
+                  {formData.militaryInfo?.militaryNumber && (
+                    <div className="bg-white border border-amber-200 px-3 py-1.5 rounded-lg text-center shadow-2xs">
+                      <div className="text-[10px] text-slate-400 font-medium">الرقم العسكري</div>
+                      <div className="text-sm font-bold font-mono text-amber-900" dir="ltr">
+                        #{formData.militaryInfo.militaryNumber}
+                      </div>
+                    </div>
+                  )}
+                  {formData.militaryInfo?.rank && (
+                    <div className="bg-white border border-emerald-200 px-3 py-1.5 rounded-lg text-center shadow-2xs">
+                      <div className="text-[10px] text-slate-400 font-medium">الرتبة</div>
+                      <div className="text-sm font-bold text-emerald-900">
+                        {formData.militaryInfo.rank}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* SECTION 1: الهوية والرتبة العسكرية */}
+              <Section title="1. الهوية العسكرية والرتب">
+                {/* الرقم العسكري */}
+                <InputField
+                  readOnly={readOnly}
+                  label="الرقم العسكري"
+                  placeholder="مثال: 104825"
+                  value={formData.militaryInfo?.militaryNumber || ''}
+                  onChange={(v: string) => handleMilitaryChange('militaryNumber', v)}
+                  dir="ltr"
+                  icon={Shield}
+                />
+
+                {/* رقم السجل العسكري / الرقم الآلي */}
+                <InputField
+                  readOnly={readOnly}
+                  label="رقم السجل العسكري / الرقم الآلي"
+                  placeholder="مثال: REG-99420"
+                  value={formData.militaryInfo?.militaryRegistryNo || ''}
+                  onChange={(v: string) => handleMilitaryChange('militaryRegistryNo', v)}
+                  dir="ltr"
+                />
+
+                {/* الرتبة العسكرية الحالية مع اقتراحات سريعة */}
+                <div className="md:col-span-2 space-y-2 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-700">
+                      الرتبة العسكرية الحالية
+                    </label>
+                    <span className="text-[11px] text-slate-400">
+                      (يمكنك الكتابة يدوياً أو النقر على الرتبة السريعة أدناه)
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      list="military-ranks-list"
+                      readOnly={readOnly}
+                      value={formData.militaryInfo?.rank || ''}
+                      onChange={(e) => handleMilitaryChange('rank', e.target.value)}
+                      placeholder="اكتب الرتبة العسكرية (مثال: ملازم أول، نقيب، رائد، رقيب، رئيس عرفاء...)"
+                      className="w-full bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm py-2 px-3 transition-all font-semibold text-slate-800"
+                    />
+                    <datalist id="military-ranks-list">
+                      {[...officerRanks, ...ncoRanks].map(r => (
+                        <option key={r} value={r} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  {/* أزرار الرتب السريعة */}
+                  {!readOnly && (
+                    <div className="pt-2">
+                      <div className="text-[11px] font-bold text-slate-500 mb-1.5 flex items-center gap-1">
+                        <span>اختيار سريع للرتبة:</span>
+                        <span className="text-[10px] text-slate-400 font-normal">
+                          {formData.employmentCategory === 'ضابط' ? '(رتب الضباط)' : formData.employmentCategory === 'ضابط صف' ? '(رتب ضباط الصف والجنود)' : '(جميع الرتب)'}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(formData.employmentCategory === 'ضابط صف' ? ncoRanks : officerRanks).map(rank => {
+                          const isSelected = formData.militaryInfo?.rank === rank;
+                          return (
+                            <button
+                              key={rank}
+                              type="button"
+                              onClick={() => handleMilitaryChange('rank', rank)}
+                              className={clsx(
+                                "text-xs px-2.5 py-1 rounded-lg border font-semibold transition-all cursor-pointer",
+                                isSelected
+                                  ? "bg-amber-600 text-white border-amber-600 shadow-2xs scale-102"
+                                  : "bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-900"
+                              )}
+                            >
+                              {rank}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* الرتبة السابقة */}
+                <InputField
+                  readOnly={readOnly}
+                  label="الرتبة السابقة"
+                  placeholder="الرتبة قبل آخر ترقية"
+                  value={formData.militaryInfo?.previousRank || ''}
+                  onChange={(v: string) => handleMilitaryChange('previousRank', v)}
+                />
+
+                {/* تاريخ آخر ترقية */}
+                <InputField
+                  readOnly={readOnly}
+                  label="تاريخ آخر ترقية عسكرية"
+                  type="date"
+                  dir="ltr"
+                  value={formData.militaryInfo?.lastPromotionDate || ''}
+                  onChange={(v: string) => handleMilitaryChange('lastPromotionDate', v)}
+                />
+
+                {/* تاريخ الالتحاق / التعيين بالخدمة */}
+                <InputField
+                  readOnly={readOnly}
+                  label="تاريخ الالتحاق / التعيين بالخدمة العسكرية"
+                  type="date"
+                  dir="ltr"
+                  value={formData.militaryInfo?.enlistmentDate || ''}
+                  onChange={(v: string) => handleMilitaryChange('enlistmentDate', v)}
+                />
+
+                {/* حالة الخدمة العسكرية */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    حالة الخدمة العسكرية
+                  </label>
+                  <select
+                    disabled={readOnly}
+                    value={formData.militaryInfo?.serviceStatus || 'في الخدمة'}
+                    onChange={(e) => handleMilitaryChange('serviceStatus', e.target.value as any)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm py-2 px-3 transition-all"
+                  >
+                    {militaryServiceStatusOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </Section>
+
+              {/* SECTION 2: السلاح والتشكيل والانتشار الميداني */}
+              <Section title="2. السلاح والتشكيل والتمركز الميداني">
+                {/* السلاح / الصنف العسكري */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-700">
+                      السلاح / الصنف العسكري
+                    </label>
+                  </div>
+                  <input
+                    type="text"
+                    list="corps-list"
+                    readOnly={readOnly}
+                    value={formData.militaryInfo?.corps || ''}
+                    onChange={(e) => handleMilitaryChange('corps', e.target.value)}
+                    placeholder="مثال: مشاة، دروع، هندسة عسكرية، إشارة، دفاع جوي..."
+                    className="w-full bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm py-2 px-3 transition-all"
+                  />
+                  <datalist id="corps-list">
+                    {militaryCorpsOptions.map(c => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                </div>
+
+                {/* الوحدة / الكتيبة / التشكيل */}
+                <InputField
+                  readOnly={readOnly}
+                  label="الوحدة / الكتيبة / التشكيل العسكري"
+                  placeholder="مثال: الكتيبة 101 مشاة، اللواء 12 مجحفل..."
+                  value={formData.militaryInfo?.unit || ''}
+                  onChange={(v: string) => handleMilitaryChange('unit', v)}
+                />
+
+                {/* التخصص العسكري الدقيق */}
+                <InputField
+                  readOnly={readOnly}
+                  label="التخصص العسكري الدقيق"
+                  placeholder="مثال: إشارة واتصالات، صيانة مدرعات، رامي مدفعية..."
+                  value={formData.militaryInfo?.militarySpecialization || ''}
+                  onChange={(v: string) => handleMilitaryChange('militarySpecialization', v)}
+                />
+
+                {/* منطقة التمركز / المعسكر / الموقع */}
+                <InputField
+                  readOnly={readOnly}
+                  label="منطقة التمركز / الموقع العسكري / المعسكر"
+                  placeholder="مثال: قاعدة طرابلس الجوية، معسكر الصمود، محور..."
+                  value={formData.militaryInfo?.stationLocation || ''}
+                  onChange={(v: string) => handleMilitaryChange('stationLocation', v)}
+                  icon={MapPin}
+                />
+              </Section>
+
+              {/* SECTION 3: التسليح والبيانات الأمنية والطبية */}
+              <Section title="3. التسليح والبيانات الأمنية والطبية">
+                {/* رقم السلاح الفردي / العهدة */}
+                <InputField
+                  readOnly={readOnly}
+                  label="رقم السلاح الفردي / العهدة العسكرية"
+                  placeholder="الرقم التسلسلي لقطعة السلاح العسكرية"
+                  value={formData.militaryInfo?.weaponNumber || ''}
+                  onChange={(v: string) => handleMilitaryChange('weaponNumber', v)}
+                  dir="ltr"
+                />
+
+                {/* فصيلة الدم العسكرية */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    فصيلة الدم العسكرية
+                  </label>
+                  <select
+                    disabled={readOnly}
+                    value={formData.militaryInfo?.bloodType || ''}
+                    onChange={(e) => handleMilitaryChange('bloodType', e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm py-2 px-3 transition-all"
+                  >
+                    <option value="">-- اختر فصيلة الدم --</option>
+                    {militaryBloodTypeOptions.map(b => (
+                      <option key={b.value} value={b.value}>{b.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* بطاقة التعريف العسكرية / التصنيف الأمني */}
+                <InputField
+                  readOnly={readOnly}
+                  label="بطاقة التعريف العسكرية / التصنيف الأمني"
+                  placeholder="رقم بطاقة الهوية العسكرية أو التصريح الأمني"
+                  value={formData.militaryInfo?.securityClearance || ''}
+                  onChange={(v: string) => handleMilitaryChange('securityClearance', v)}
+                  dir="ltr"
+                  className="md:col-span-2"
+                />
+              </Section>
+
+              {/* SECTION 4: الدورات والأوسمة والملاحظات */}
+              <Section title="4. الدورات العسكرية والتأهيل والأوسمة">
+                {/* الدورات العسكرية والتأهيل */}
+                <div className="md:col-span-2 space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    الدورات العسكرية والتأهيل الميداني
+                  </label>
+                  <textarea
+                    rows={2}
+                    readOnly={readOnly}
+                    value={formData.militaryInfo?.militaryCourses || ''}
+                    onChange={(e) => handleMilitaryChange('militaryCourses', e.target.value)}
+                    placeholder="مثال: دورة أركان صغرى، دورة مظلات، دورة قيادة فصائل، دورات مكافحة إرهاب..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm p-3 transition-all"
+                  />
+                </div>
+
+                {/* الأوسمة والأنواط */}
+                <div className="md:col-span-2 space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    الأوسمة والأنواط والشهادات التقديرية العسكرية
+                  </label>
+                  <textarea
+                    rows={2}
+                    readOnly={readOnly}
+                    value={formData.militaryInfo?.medalsAndBadges || ''}
+                    onChange={(e) => handleMilitaryChange('medalsAndBadges', e.target.value)}
+                    placeholder="مثال: نوط الشجاعة، وسام الواجب، شكر وتقدير من القيادة العامة..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm p-3 transition-all"
+                  />
+                </div>
+
+                {/* ملاحظات عسكرية */}
+                <div className="md:col-span-2 space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    ملاحظات عسكرية خاصة
+                  </label>
+                  <textarea
+                    rows={2}
+                    readOnly={readOnly}
+                    value={formData.militaryInfo?.notes || ''}
+                    onChange={(e) => handleMilitaryChange('notes', e.target.value)}
+                    placeholder="أي ملاحظات أو قيود أو سجلات إضافية تخص المنتسب..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm p-3 transition-all"
+                  />
+                </div>
+              </Section>
+
+              {/* Custom fields military */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 border-t border-slate-100 pt-6">
+                {renderCustomFields('military')}
               </div>
             </div>
           )}
