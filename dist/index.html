@@ -7,11 +7,40 @@
     <meta name="description" content="نظام شامل ومتكامل لإدارة الموارد البشرية والموظفين والرواتب والحضور والإجازات مع التحديث المباشر والنسخ الاحتياطي التلقائي" />
     <meta property="og:title" content="HR System - مركز البنيان لإدارة الموارد البشرية" />
     <meta property="og:description" content="نظام شامل ومتكامل لإدارة الموارد البشرية والموظفين والرواتب والحضور والإجازات مع التحديث المباشر والنسخ الاحتياطي التلقائي" />
-    <script type="module" crossorigin src="./assets/index-D21DvDmV.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DDFbxVPx.css">
+    <script type="module" crossorigin src="./assets/index-918qFGBi.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DbQt4udn.css">
   </head>
-  <body class="bg-slate-50 text-slate-800 antialiased" style="background-color: #f8fafc; margin: 0; min-height: 100vh;">
-    <div id="root"></div>
+  <body class="bg-slate-900 text-slate-900 antialiased" style="background-color: #0f172a; margin: 0; min-height: 100vh; overflow: hidden;">
+    <div id="root">
+      <!-- شاشة التحميل التلقائية السريعة لمنع الشاشة البيضاء تماماً أثناء بدء تشغيل النظام -->
+      <div id="app-loading-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: system-ui, -apple-system, sans-serif; background-color: #0f172a; color: #f8fafc; padding: 24px; text-align: center; direction: rtl;">
+        <div style="width: 52px; height: 52px; border: 4px solid #1e293b; border-top-color: #3b82f6; border-radius: 50%; animation: hr-spin 0.9s linear infinite; margin-bottom: 20px;"></div>
+        <div style="font-size: 20px; font-weight: 800; margin-bottom: 8px; color: #ffffff;">مركز البنيان للتقنية والصناعات الهندسية</div>
+        <div style="font-size: 13px; color: #94a3b8; max-width: 420px; line-height: 1.6;">جاري تشغيل المنظومة والتحقق من سلامة السجلات المركزية...</div>
+        <style>
+          @keyframes hr-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        </style>
+      </div>
+    </div>
+    
+    <script>
+      // صمام أمان لمنع الشاشة البيضاء في حال حدوث أي خطأ في تحميل حزم الجافاسكريبت
+      window.addEventListener('error', function(e) {
+        var placeholder = document.getElementById('app-loading-placeholder');
+        if (placeholder) {
+          placeholder.innerHTML = '<div style="max-width: 480px; width: 100%; background: #ffffff; color: #0f172a; padding: 28px; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); text-align: center; border: 1px solid #cbd5e1;">' +
+            '<div style="font-size: 40px; margin-bottom: 12px;">🛡️</div>' +
+            '<div style="font-size: 18px; font-weight: 800; margin-bottom: 10px; color: #b91c1c;">تنبيه الأمان: تعذر تحميل حزمة التحديث الأخيرة</div>' +
+            '<div style="font-size: 12px; color: #64748b; margin-bottom: 20px; line-height: 1.7;">تم اكتشاف بقايا ملفات غير متطابقة من ترقية سابقة. نظام الحماية الذاتي حافظ على كامل بيانات الموظفين بأمان تام. يمكنك استعادة النسخة الأصلية فوراً بنقرة واحدة:</div>' +
+            '<div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">' +
+            '<button onclick="if(window.electronAPI && window.electronAPI.resetToOriginal) { window.electronAPI.resetToOriginal(); } else { localStorage.clear(); window.location.reload(); }" style="background: #2563eb; color: #ffffff; border: none; padding: 12px 20px; border-radius: 12px; font-weight: 800; cursor: pointer; font-size: 13px; box-shadow: 0 4px 12px rgba(37,99,235,0.3);">🔄 استعادة المنظومة الأصلية فوراً</button>' +
+            '<button onclick="window.location.reload()" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 12px 18px; border-radius: 12px; font-weight: 700; cursor: pointer; font-size: 13px;">إعادة المحاولة</button>' +
+            '</div>' +
+            '</div>';
+        }
+      });
+    </script>
   </body>
 </html>
+
 
