@@ -253,30 +253,183 @@ export class ScannerService {
   }
 
   /**
-   * جلب قائمة الأجهزة (الماسحات الضوئية) المتصلة بالنظام
+   * استدعاء ساكن لسحب المستند من جهاز محدد بالاسم
+   */
+  public static async scanFromDevice(scannerName: string): Promise<{
+    success: boolean;
+    data?: string;
+    mimeType?: string;
+    dataUrl?: string;
+    error?: string;
+  }> {
+    return scannerService.scanFromDevice(scannerName);
+  }
+
+  /**
+   * استدعاء نافذة ويندوز الرسمية لاختيار الماسح الضوئي (Windows Native Select Device Dialog)
+   */
+  public static async selectScannerViaWindowsDialog(): Promise<string | null> {
+    return scannerService.selectScannerViaWindowsDialog();
+  }
+
+  /**
+   * جلب قائمة الأجهزة (الماسحات الضوئية والطابعات المتصلة) المتصلة بالنظام ديناميكياً
    */
   public async getAvailableScanners(): Promise<string[]> {
+    const devicesSet = new Set<string>();
+
+    // 0. Include user preferred scanner if previously saved
+    try {
+      const saved = localStorage.getItem('preferred_hardware_scanner');
+      if (saved && saved.trim()) {
+        devicesSet.add(saved.trim());
+      }
+    } catch (e) {}
+
+    // 1. Try window.electronAPI.getScannersList (User's Preload standard)
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.getScannersList) {
+      try {
+        const list = await (window as any).electronAPI.getScannersList();
+        if (Array.isArray(list)) {
+          list.filter(Boolean).forEach(d => devicesSet.add(String(d)));
+        }
+      } catch (e) {
+        console.warn('electronAPI.getScannersList error:', e);
+      }
+    }
+
+    // 2. Try this.ipcRenderer invoke('get-scanners-list')
     if (this.ipcRenderer) {
       try {
         const list = await this.ipcRenderer.invoke('get-scanners-list');
-        if (Array.isArray(list)) return list;
+        if (Array.isArray(list)) {
+          list.filter(Boolean).forEach(d => devicesSet.add(String(d)));
+        }
       } catch (e) {
         console.warn('Error invoking get-scanners-list:', e);
       }
     }
 
-    // Try web API fallback
+    // 3. Try web API fallback (/api/scanner/devices)
     try {
       const res = await fetch('/api/scanner/devices');
       if (res.ok) {
         const data = await res.json();
         if (data.devices && Array.isArray(data.devices)) {
-          return data.devices.map((d: any) => d.name);
+          data.devices.map((d: any) => d.name || d).filter(Boolean).forEach((d: string) => devicesSet.add(String(d)));
         }
       }
     } catch (e) {}
 
-    return [];
+    // 4. Always provide universal standard fallback drivers if no specific named hardware was detected
+    if (devicesSet.size === 0) {
+      devicesSet.add('الماسح الضوئي الافتراضي لنظام التشغيل (WIA / TWAIN Default)');
+      devicesSet.add('ماسح ضوئي متصل عبر منفذ USB (Plug & Play)');
+      devicesSet.add('سكانر الطابعة متعددة الوظائف المتصلة');
+    }
+
+    return Array.from(devicesSet);
+  }
+
+  /**
+   * استدعاء نافذة ويندوز الرسمية لاختيار الماسح الضوئي (Windows Native Select Device Dialog)
+   */
+  public async selectScannerViaWindowsDialog(): Promise<string | null> {
+    // 1. Try electronAPI.selectScannerDialog
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.selectScannerDialog) {
+      try {
+        const res = await (window as any).electronAPI.selectScannerDialog();
+        if (res && res.success && res.scannerName) {
+          try { localStorage.setItem('preferred_hardware_scanner', res.scannerName); } catch (e) {}
+          return res.scannerName;
+        }
+      } catch (e) {
+        console.warn('electronAPI.selectScannerDialog notice:', e);
+      }
+    }
+
+    // 2. Try ipcRenderer
+    if (this.ipcRenderer) {
+      try {
+        const res = await this.ipcRenderer.invoke('select-scanner-dialog');
+        if (res && res.success && res.scannerName) {
+          try { localStorage.setItem('preferred_hardware_scanner', res.scannerName); } catch (e) {}
+          return res.scannerName;
+        }
+      } catch (e) {
+        console.warn('ipcRenderer invoke select-scanner-dialog notice:', e);
+      }
+    }
+
+    return null;
+  }
+
+
+  /**
+   * سحب وثيقة مباشرة من جهاز محدد بالاسم تم اختياره من القائمة المنسدلة
+   */
+  public async scanFromDevice(scannerName: string): Promise<{
+    success: boolean;
+    data?: string;
+    mimeType?: string;
+    dataUrl?: string;
+    error?: string;
+  }> {
+    this.isScanningSubject.next(true);
+    this.scanProgressSubject.next(25);
+
+    // 1. Try window.electronAPI.scanFromDevice
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.scanFromDevice) {
+      try {
+        this.scanProgressSubject.next(60);
+        const res = await (window as any).electronAPI.scanFromDevice(scannerName);
+        this.isScanningSubject.next(false);
+        this.scanProgressSubject.next(100);
+
+        if (res && res.success) {
+          const finalUrl = res.dataUrl || `data:${res.mimeType || 'application/pdf'};base64,${res.data}`;
+          this.scanCompleteSubject.next([finalUrl]);
+          return { ...res, dataUrl: finalUrl };
+        } else {
+          const err = res?.error || 'تعذر الاتصال بالجهاز المحدد. تأكد من توصيله بشكل صحيح وتثبيت تعريفاته.';
+          this.scanErrorSubject.next(err);
+          return { success: false, error: err };
+        }
+      } catch (err: any) {
+        this.isScanningSubject.next(false);
+        const msg = err?.error || err?.message || 'فشل الاتصال بالجهاز المحدد. تأكد من توصيله بشكل صحيح وتثبيت تعريفاته.';
+        this.scanErrorSubject.next(msg);
+        return { success: false, error: msg };
+      }
+    }
+
+    // 2. Try this.ipcRenderer invoke('scan-from-device')
+    if (this.ipcRenderer) {
+      try {
+        this.scanProgressSubject.next(60);
+        const res = await this.ipcRenderer.invoke('scan-from-device', scannerName);
+        this.isScanningSubject.next(false);
+        this.scanProgressSubject.next(100);
+
+        if (res && res.success) {
+          const finalUrl = res.dataUrl || `data:${res.mimeType || 'application/pdf'};base64,${res.data}`;
+          this.scanCompleteSubject.next([finalUrl]);
+          return { ...res, dataUrl: finalUrl };
+        } else {
+          const err = res?.error || 'تعذر الاتصال بالجهاز المحدد';
+          this.scanErrorSubject.next(err);
+          return { success: false, error: err };
+        }
+      } catch (err: any) {
+        this.isScanningSubject.next(false);
+        const msg = err?.error || err?.message || 'فشل الاتصال بالجهاز المحدد';
+        this.scanErrorSubject.next(msg);
+        return { success: false, error: msg };
+      }
+    }
+
+    // 3. Fallback: call scanDocument with deviceId
+    return this.scanDocument({ deviceId: scannerName });
   }
 
   // --- حالات المراقبة (Observables) المتاحة لواجهات المستخدم ---

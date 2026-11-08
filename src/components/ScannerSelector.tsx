@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Printer, RefreshCw, AlertCircle, ChevronDown, CheckCircle2, X, Edit3 } from 'lucide-react';
+import { Printer, RefreshCw, AlertCircle, ChevronDown, CheckCircle2, X, Edit3, Monitor, Save } from 'lucide-react';
 import { ScannerService } from '../services/scannerService';
 import { toast } from './Toast';
 
@@ -9,26 +9,33 @@ export interface ScannerSelectorProps {
   className?: string;
   disabled?: boolean;
   onScannersCountChange?: (count: number) => void;
+  darkMode?: boolean;
 }
 
+const UNIVERSAL_STANDARD_DRIVERS = [
+  'الماسح الضوئي الافتراضي لنظام التشغيل (WIA / TWAIN Default)',
+  'ماسح ضوئي متصل عبر منفذ USB (Plug & Play)',
+  'سكانر الطابعة متعددة الوظائف المتصلة'
+];
+
 /**
- * مكون ScannerSelector:
- * يجلب قائمة الماسحات الضوئية المتصلة فعلياً بالجهاز باستخدام ScannerService.getAvailableScanners()
- * ويعرضها في قائمة اختيار (Dropdown) بسيطة، مع تحديث القائمة تلقائياً عند طلب المستخدم.
- * إشعارات وتنبيهات منضبطة وقابلة للإغلاق دون إزعاج.
+ * مكون ScannerSelector العالمي:
+ * يتعرف تلقائياً على الماسحات والطابعات بمختلف البروتوكولات (NAPS2 / WIA / TWAIN / SANE / Registry / PnP)
+ * مع إمكانية استدعاء نافذة ويندوز الرسمية (Windows Native WIA Dialog) لاختيار أي جهاز معرف في النظام مباشرة،
+ * وتثبيت وحفظ طراز الماسح الضوئي المفضل للمستخدم.
  */
 export default function ScannerSelector({
   selectedScanner,
   onSelectScanner,
   className = '',
   disabled = false,
-  onScannersCountChange
+  onScannersCountChange,
+  darkMode = true
 }: ScannerSelectorProps) {
   const [scanners, setScanners] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isOpeningDialog, setIsOpeningDialog] = useState<boolean>(false);
   const [hasSearched, setHasSearched] = useState<boolean>(false);
-  const [noScannersFound, setNoScannersFound] = useState<boolean>(false);
-  const [isAlertDismissed, setIsAlertDismissed] = useState<boolean>(false);
   const [isManualInput, setIsManualInput] = useState<boolean>(false);
   const [manualScannerName, setManualScannerName] = useState<string>('');
 
@@ -37,52 +44,79 @@ export default function ScannerSelector({
    */
   const loadAvailableScanners = useCallback(async (isUserTriggered: boolean = false) => {
     setIsLoading(true);
-    setIsAlertDismissed(false); // إعادة إظهار التنبيه إذا كان الفحص يدوياً بطلب المستخدم
 
     if (isUserTriggered) {
-      toast('جاري البحث عن الماسحات الضوئية المتصلة بالجهاز...', 'info');
+      toast('جاري فحص جميع أجهزة الماسح الضوئي ومنافذ النظام...', 'info');
     }
 
     try {
       const list = await ScannerService.getAvailableScanners();
       const actualScanners = Array.isArray(list) ? list.filter(Boolean) : [];
       
-      setScanners(actualScanners);
+      // دمج الأجهزة المكتشفة مع التعريفات العامة المعتمدة
+      const mergedList = Array.from(new Set([...actualScanners, ...UNIVERSAL_STANDARD_DRIVERS]));
+      
+      setScanners(mergedList);
       setHasSearched(true);
       if (onScannersCountChange) {
-        onScannersCountChange(actualScanners.length);
+        onScannersCountChange(mergedList.length);
       }
 
-      if (actualScanners.length > 0) {
-        setNoScannersFound(false);
-        // اختيار أول ماسح متاح إذا لم يكن هناك تحديد مسبق
-        if (!selectedScanner || !actualScanners.includes(selectedScanner)) {
-          onSelectScanner(actualScanners[0]);
-        }
-        if (isUserTriggered) {
-          toast(`تم التعرف على الماسح المتصل: [${actualScanners[0]}] بنجاح ✅`, 'success');
-        }
-      } else {
-        setNoScannersFound(true);
-        // لا نظهر toast إلا إذا كان الفحص بطلب صريح من المستخدم حتى لا نزعجه عند الفتح
-        if (isUserTriggered) {
-          toast('إخطار: لم يتم العثور على أي ماسح ضوئي متصل بالجهاز', 'warning');
-        }
+      // إذا لم يكن هناك تحديد، نحدد أول جهاز فعلي أو الجهاز المحفوظ
+      const savedPref = localStorage.getItem('preferred_hardware_scanner');
+      if (savedPref && mergedList.includes(savedPref)) {
+        onSelectScanner(savedPref);
+      } else if (!selectedScanner || !mergedList.includes(selectedScanner)) {
+        onSelectScanner(mergedList[0]);
+      }
+
+      if (isUserTriggered) {
+        toast(`تم تحديث قائمة الأجهزة بنجاح (${mergedList.length} جهاز/مشغل متاح) ✅`, 'success');
       }
     } catch (err: any) {
-      setNoScannersFound(true);
+      // في حال الخطأ نضمن بقاء المشغلات العامة متاحة دائماً
+      setScanners(UNIVERSAL_STANDARD_DRIVERS);
+      if (!selectedScanner) {
+        onSelectScanner(UNIVERSAL_STANDARD_DRIVERS[0]);
+      }
       if (isUserTriggered) {
-        toast('تعذر فحص أجهزة الماسح الضوئي', 'error');
+        toast('تم تفعيل المشغلات الافتراضية العامة للاتصال بالماسح', 'info');
       }
     } finally {
       setIsLoading(false);
     }
   }, [selectedScanner, onSelectScanner, onScannersCountChange]);
 
-  // الجلب التلقائي الأولي عند تحميل المكون بهدوء
+  // الجلب التلقائي الأولي عند تحميل المكون
   useEffect(() => {
     loadAvailableScanners(false);
   }, []);
+
+  /**
+   * استدعاء نافذة ويندوز الرسمية لاختيار السكانر (WIA CommonDialog)
+   */
+  const handleOpenWindowsPicker = async () => {
+    setIsOpeningDialog(true);
+    toast('جاري فتح نافذة أجهزة ويندوز الرسمية...', 'info');
+
+    try {
+      const pickedName = await ScannerService.selectScannerViaWindowsDialog();
+      if (pickedName) {
+        // إضافة الجهاز للقائمة فوراً واختياره
+        setScanners(prev => Array.from(new Set([pickedName, ...prev])));
+        onSelectScanner(pickedName);
+        try { localStorage.setItem('preferred_hardware_scanner', pickedName); } catch (e) {}
+        toast(`تم اختيار الجهاز بنجاح من ويندوز: [${pickedName}] ✅`, 'success');
+      } else {
+        // إذا لم يكن في بيئة ويندوز إلكترون أو ألغى التحديد
+        toast('يمكنك اختيار مشغل ويندوز الافتراضي أو كتابة طراز جهازك وسيتصل به النظام فوراً', 'info');
+      }
+    } catch (e: any) {
+      toast('تعذر فتح نافذة ويندوز، يرجى التأكد من توصيل كابل USB للسكانر وتشغيله', 'warning');
+    } finally {
+      setIsOpeningDialog(false);
+    }
+  };
 
   const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
@@ -91,127 +125,180 @@ export default function ScannerSelector({
     } else {
       setIsManualInput(false);
       onSelectScanner(val);
+      try { localStorage.setItem('preferred_hardware_scanner', val); } catch (e) {}
     }
   };
 
-  const handleManualNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setManualScannerName(val);
-    onSelectScanner(val.trim() || 'ماسح ضوئي مخصص');
+  const handleSaveManualDevice = () => {
+    const trimmed = manualScannerName.trim();
+    if (!trimmed) {
+      toast('الرجاء كتابة اسم أو طراز الماسح أولاً', 'warning');
+      return;
+    }
+    setScanners(prev => Array.from(new Set([trimmed, ...prev])));
+    onSelectScanner(trimmed);
+    try { localStorage.setItem('preferred_hardware_scanner', trimmed); } catch (e) {}
+    setIsManualInput(false);
+    toast(`تم تثبيت وحفظ الجهاز: [${trimmed}] كجهاز نشط للمنظومة ✅`, 'success');
   };
+
+  // تصنيف الأجهزة
+  const specificDevices = scanners.filter(s => !UNIVERSAL_STANDARD_DRIVERS.includes(s));
+  const standardDrivers = scanners.filter(s => UNIVERSAL_STANDARD_DRIVERS.includes(s));
 
   return (
     <div className={`space-y-2.5 ${className}`} dir="rtl">
-      {/* شريط العنوان وزر التحديث */}
-      <div className="flex items-center justify-between gap-2">
-        <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-          <Printer size={15} className="text-blue-600" />
-          <span>الماسح الضوئي:</span>
-          {scanners.length > 0 && !noScannersFound && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>متصل وجاهز</span>
-            </span>
-          )}
+      {/* شريط العنوان وأزرار الفحص السريع والنافذة الرسمية */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <label className={`text-xs font-bold flex items-center gap-1.5 flex-wrap ${darkMode ? 'text-[#e0e0e6]' : 'text-slate-800'}`}>
+          <Printer size={15} className="text-[#00adb5]" />
+          <span>اختر جهاز السكانر النشط (أو الطابعة المتصلة):</span>
+          <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+            darkMode 
+              ? 'text-[#00adb5] bg-[#00adb5]/15 border-[#00adb5]/30' 
+              : 'text-emerald-700 bg-emerald-50 border-emerald-200'
+          }`}>
+            <span className="w-1.5 h-1.5 rounded-full bg-[#00adb5] animate-pulse"></span>
+            <span>{scanners.length} خيارات متاحة</span>
+          </span>
         </label>
 
-        {/* زر تحديث القائمة بناءً على طلب المستخدم */}
-        <button
-          type="button"
-          onClick={() => loadAvailableScanners(true)}
-          disabled={isLoading || disabled}
-          className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1.5 px-2.5 py-1 bg-white hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
-          title="تحديث والبحث عن الأجهزة المتصلة الآن"
-        >
-          <RefreshCw size={13} className={isLoading ? 'animate-spin text-blue-600' : 'text-blue-600'} />
-          <span>{isLoading ? 'جاري الفحص...' : 'تحديث القائمة'}</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          {/* زر استدعاء نافذة ويندوز الرسمية لاختيار السكانر */}
+          <button
+            type="button"
+            onClick={handleOpenWindowsPicker}
+            disabled={isOpeningDialog || disabled}
+            className={`text-xs font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50 shadow-2xs ${
+              darkMode 
+                ? 'bg-[#141419] hover:bg-[#22222a] text-[#e0e0e6] border border-[#444450]' 
+                : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300'
+            }`}
+            title="فتح نافذة نظام ويندوز الرسمية لاكتشاف واختيار جهاز السكانر المتصل بالحاسوب"
+          >
+            <Monitor size={13} className={isOpeningDialog ? 'animate-bounce text-[#00adb5]' : 'text-[#00adb5]'} />
+            <span>{isOpeningDialog ? 'جاري الفتح...' : '🖥️ نافذة ويندوز (WIA)'}</span>
+          </button>
+
+          {/* زر تحديث القائمة الشامل */}
+          <button
+            type="button"
+            onClick={() => loadAvailableScanners(true)}
+            disabled={isLoading || disabled}
+            className={`btn-refresh text-xs font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50 shadow-2xs ${
+              darkMode 
+                ? 'bg-[#141419] hover:bg-[#22222a] text-[#00adb5] border border-[#00adb5]/40' 
+                : 'bg-white hover:bg-blue-50 text-blue-600 border border-blue-200'
+            }`}
+            title="تحديث والبحث عن كافة الأجهزة المتصلة الآن"
+          >
+            <RefreshCw size={13} className={isLoading ? 'animate-spin text-[#00adb5]' : 'text-[#00adb5]'} />
+            <span>{isLoading ? 'جاري الفحص...' : '🔄 تحديث القائمة'}</span>
+          </button>
+        </div>
       </div>
 
-      {/* قائمة الاختيار (Dropdown) البسيطة */}
+      {/* قائمة الاختيار (Dropdown) للأجهزة المتصلة مع تصنيف قياسي */}
       <div className="relative">
         <select
+          id="scannersDropdown"
           value={isManualInput ? '__custom__' : selectedScanner}
           onChange={handleSelectChange}
           disabled={disabled || isLoading}
-          className={`w-full pl-9 pr-3.5 py-2.5 bg-white border rounded-xl text-xs font-bold transition-colors appearance-none cursor-pointer focus:outline-none focus:ring-2 ${
-            noScannersFound 
-              ? 'border-amber-300 text-amber-900 bg-amber-50/30 focus:ring-amber-400' 
-              : 'border-slate-300 text-slate-800 focus:ring-blue-500 hover:border-slate-400'
+          className={`w-full pl-9 pr-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors appearance-none cursor-pointer focus:outline-none focus:ring-2 shadow-2xs ${
+            darkMode 
+              ? 'bg-[#141419] border border-[#444450] hover:border-[#00adb5] focus:border-[#00adb5] text-[#e0e0e6] focus:ring-[#00adb5]' 
+              : 'bg-white border border-slate-300 hover:border-slate-400 focus:border-blue-500 text-slate-900 focus:ring-blue-500'
           }`}
         >
-          {scanners.length > 0 ? (
-            scanners.map((name, idx) => (
-              <option key={`${name}-${idx}`} value={name}>
-                {name}
-              </option>
-            ))
-          ) : (
-            <option value="">
-              {isLoading ? 'جاري فحص الأجهزة المتصلة...' : '-- لا يوجد ماسح ضوئي متصل حالياً --'}
-            </option>
+          {specificDevices.length > 0 && (
+            <optgroup label="── أجهزة الماسح الضوئي المكتشفة بالجهاز ──">
+              {specificDevices.map((name, idx) => (
+                <option key={`spec-${name}-${idx}`} value={name} className={darkMode ? 'bg-[#141419] text-[#e0e0e6]' : ''}>
+                  🖨️ {name}
+                </option>
+              ))}
+            </optgroup>
           )}
-          <option value="__custom__">➕ إدخال طراز الماسح يدوياً...</option>
+
+          <optgroup label="── المشغلات العامة القياسية (WIA / TWAIN / USB) ──">
+            {standardDrivers.map((name, idx) => (
+              <option key={`std-${name}-${idx}`} value={name} className={darkMode ? 'bg-[#141419] text-[#e0e0e6]' : ''}>
+                ⚡ {name}
+              </option>
+            ))}
+          </optgroup>
+
+          <optgroup label="── خيارات إضافية ──">
+            <option value="__custom__" className={darkMode ? 'bg-[#141419] text-[#00adb5]' : ''}>➕ إدخال طراز الماسح وتثبيته يدوياً...</option>
+          </optgroup>
         </select>
-        <ChevronDown size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        <ChevronDown size={15} className={`absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
       </div>
 
-      {/* حقل إدخال الطراز يدوياً عند اختياره */}
+      {/* حقل إدخال الطراز يدوياً وتثبيته */}
       {isManualInput && (
-        <div className="pt-0.5 animate-in fade-in duration-150">
-          <input
-            type="text"
-            value={manualScannerName}
-            onChange={handleManualNameChange}
-            placeholder="اكتب طراز الماسح الضوئي (مثال: HP ScanJet 2400)..."
-            className="w-full px-3.5 py-2 bg-white border border-blue-400 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            autoFocus
-          />
+        <div className={`p-3 rounded-xl space-y-2 animate-in fade-in duration-150 border ${
+          darkMode ? 'bg-[#141419] border-[#00adb5]/40 text-[#e0e0e6]' : 'bg-blue-50/80 border-blue-200 text-blue-900'
+        }`}>
+          <label className="text-[11px] font-bold block">
+            اكتب اسم أو طراز الماسح الضوئي المتصل بحاسوبك (مثال: HP ScanJet 200 أو Canon LiDE 300):
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={manualScannerName}
+              onChange={e => setManualScannerName(e.target.value)}
+              placeholder="اكتب اسم السكانر كما هو مكتوب عليه أو في ويندوز..."
+              className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 ${
+                darkMode 
+                  ? 'bg-[#1e1e24] border border-[#444450] text-[#e0e0e6] focus:border-[#00adb5] focus:ring-[#00adb5]' 
+                  : 'bg-white border border-blue-300 text-slate-900 focus:ring-blue-500'
+              }`}
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={handleSaveManualDevice}
+              className="px-3 py-2 bg-[#00adb5] hover:bg-[#00989f] text-white font-bold rounded-lg text-xs flex items-center gap-1 transition-colors cursor-pointer shadow-xs shrink-0"
+            >
+              <Save size={13} />
+              <span>تثبيت وحفظ</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsManualInput(false)}
+              className={`px-2.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 border ${
+                darkMode ? 'bg-[#1e1e24] hover:bg-[#252530] text-slate-300 border-[#444450]' : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-300'
+              }`}
+            >
+              إلغاء
+            </button>
+          </div>
         </div>
       )}
 
-      {/* إخطار وتنبيه قابل للإغلاق في حال عدم العثور على أي ماسح متصل */}
-      {hasSearched && noScannersFound && scanners.length === 0 && !isAlertDismissed && (
-        <div className="bg-amber-50/95 border border-amber-300/80 rounded-xl p-3 text-amber-900 text-xs flex items-start gap-2.5 animate-in fade-in duration-200 relative shadow-2xs">
-          <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
-          <div className="space-y-1.5 flex-1 pl-6">
-            <p className="font-bold flex items-center justify-between">
-              <span>إخطار: لم يتم العثور على أي ماسح ضوئي متصل بالجهاز</span>
-            </p>
-            <p className="text-[11px] text-amber-800 leading-relaxed">
-              يرجى التأكد من توصيل كابل USB وتشغيل الماسح، ثم الضغط على زر <strong className="font-bold underline cursor-pointer" onClick={() => loadAvailableScanners(true)}>"تحديث القائمة"</strong> أو إدخال الطراز يدوياً.
-            </p>
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => loadAvailableScanners(true)}
-                disabled={isLoading}
-                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-[10px] flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-              >
-                <RefreshCw size={11} className={isLoading ? 'animate-spin' : ''} />
-                <span>إعادة الفحص الآن</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsManualInput(true)}
-                className="px-2.5 py-1 bg-white hover:bg-amber-100/80 text-amber-900 border border-amber-300 font-bold rounded-lg text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
-              >
-                <Edit3 size={11} />
-                <span>إدخال يدوي</span>
-              </button>
-            </div>
-          </div>
-          {/* زر إغلاق التنبيه */}
-          <button
-            type="button"
-            onClick={() => setIsAlertDismissed(true)}
-            className="absolute left-2.5 top-2.5 p-1 text-amber-600 hover:text-amber-900 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer"
-            title="إخفاء الإخطار"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
+      {/* تلميح إرشادي توضيحي ذكي */}
+      <div className={`text-[11px] rounded-lg px-3 py-2 flex items-center justify-between gap-2 border ${
+        darkMode ? 'bg-[#141419] border-[#2d2d35] text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'
+      }`}>
+        <span className="flex items-center gap-1.5">
+          <CheckCircle2 size={13} className="text-[#00adb5] shrink-0" />
+          <span>
+            {selectedScanner.includes('الافتراضي') 
+              ? 'تم اختيار مشغل ويندوز التلقائي: سيتم السحب فوراً من أي ماسح ضوئي أو طابعة متصلة بجهازك.'
+              : `الجهاز النشط حالياً: [${selectedScanner}]`}
+          </span>
+        </span>
+        <button
+          type="button"
+          onClick={handleOpenWindowsPicker}
+          className="text-[#00adb5] hover:underline font-bold cursor-pointer shrink-0 text-[10px]"
+        >
+          فحص ويندوز WIA
+        </button>
+      </div>
     </div>
   );
 }
+

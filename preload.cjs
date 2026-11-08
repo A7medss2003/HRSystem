@@ -6,8 +6,12 @@ const { contextBridge, ipcRenderer } = require('electron');
  */
 try {
   contextBridge.exposeInMainWorld('electronAPI', {
+    getScannersList: () => ipcRenderer.invoke('get-scanners-list'),
+    scanFromDevice: (scannerName) => ipcRenderer.invoke('scan-from-device', scannerName),
     scanDocument: (options) => ipcRenderer.invoke('scan-document', options),
-    getScannersList: () => ipcRenderer.invoke('get-scanners-list')
+    selectScannerDialog: () => ipcRenderer.invoke('select-scanner-dialog'),
+    resetToOriginal: () => ipcRenderer.invoke('app:reset-to-original'),
+    relaunch: () => ipcRenderer.invoke('app:relaunch')
   });
 
   contextBridge.exposeInMainWorld('electron', {
@@ -21,8 +25,13 @@ try {
   // If contextIsolation is false or already exposed, assign directly to window
   if (typeof window !== 'undefined') {
     window.electronAPI = {
+      getScannersList: () => ipcRenderer.invoke('get-scanners-list'),
+      scanFromDevice: (scannerName) => ipcRenderer.invoke('scan-from-device', scannerName),
       scanDocument: (options) => ipcRenderer.invoke('scan-document', options),
-      getScannersList: () => ipcRenderer.invoke('get-scanners-list')
+      selectScannerDialog: () => ipcRenderer.invoke('select-scanner-dialog'),
+      resetToOriginal: () => ipcRenderer.invoke('app:reset-to-original'),
+      relaunch: () => ipcRenderer.invoke('app:relaunch')
     };
   }
 }
+

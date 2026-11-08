@@ -585,7 +585,11 @@ export default function EmployeePrintModal({
                     <div className="data-grid-3 grid grid-cols-3 gap-3 p-3 text-xs">
                       <div className="data-item"><div className="data-label text-slate-500 font-medium">الرقم العسكري:</div><div className="data-value font-bold font-mono text-amber-900" dir="ltr">{employee.militaryInfo?.militaryNumber || '-'}</div></div>
                       <div className="data-item"><div className="data-label text-slate-500 font-medium">الرتبة الحالية:</div><div className="data-value font-bold text-slate-900">{employee.militaryInfo?.rank || '-'}</div></div>
-                      <div className="data-item"><div className="data-label text-slate-500 font-medium">الرتبة السابقة:</div><div className="data-value font-bold">{employee.militaryInfo?.previousRank || '-'}</div></div>
+                      {employee.employmentCategory === 'ضابط صف' ? (
+                        <div className="data-item"><div className="data-label text-slate-500 font-medium">الدرجة العلمية:</div><div className="data-value font-bold text-amber-900 font-mono">الدرجة {employee.militaryInfo?.academicGrade || employee.militaryInfo?.previousRank || '-'}</div></div>
+                      ) : (
+                        <div className="data-item"><div className="data-label text-slate-500 font-medium">الرتبة السابقة:</div><div className="data-value font-bold">{employee.militaryInfo?.previousRank || '-'}</div></div>
+                      )}
                       <div className="data-item"><div className="data-label text-slate-500 font-medium">السلاح / الصنف:</div><div className="data-value font-bold">{employee.militaryInfo?.corps || '-'}</div></div>
                       <div className="data-item"><div className="data-label text-slate-500 font-medium">الوحدة / الكتيبة:</div><div className="data-value font-bold">{employee.militaryInfo?.unit || '-'}</div></div>
                       <div className="data-item"><div className="data-label text-slate-500 font-medium">التخصص العسكري:</div><div className="data-value font-bold">{employee.militaryInfo?.militarySpecialization || '-'}</div></div>

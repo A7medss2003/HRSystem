@@ -6,7 +6,8 @@ import { validatePassword } from '../lib/validators';
 import { fetchCentralDataFromHost, applySyncableState, pushCentralDataToHost, extractSyncableState } from '../lib/serverSync';
 
 export default function Login({ onLogin }: { onLogin: (role: string, username: string, permissions?: string[]) => void }) {
-  const { systemSettings, employees, useRecoveryCode, addEmployee } = useStore();
+  const { systemSettings, employees: rawEmployees, useRecoveryCode, addEmployee } = useStore();
+  const employees = Array.isArray(rawEmployees) ? rawEmployees : [];
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState('');
   const [username, setUsername] = useState(localStorage.getItem('rememberedUser') || '');
@@ -17,8 +18,9 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
   // Track synchronization state with central host
   const [isSyncing, setIsSyncing] = useState(() => {
     // If local store has no admin yet, try syncing from host first
-    return employees.filter(e => e.defaultRole === 'admin').length === 0;
+    return (employees || []).filter(e => e && e.defaultRole === 'admin').length === 0;
   });
+
 
   const [setupData, setSetupData] = useState({ fullName: '', username: '', password: '', confirmPassword: '' });
 
@@ -283,19 +285,19 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
             
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">الاسم الكامل للمدير</label>
-              <input type="text" required value={setupData.fullName} onChange={e => setSetupData({...setupData, fullName: e.target.value})} className="w-full p-2.5 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="مثال: أحمد محمد" />
+              <input type="text" required value={setupData.fullName} onChange={e => setSetupData({...setupData, fullName: e.target.value})} className="w-full p-2.5 bg-white border border-slate-300 text-slate-900 font-semibold rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="مثال: أحمد محمد" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">اسم المستخدم للدخول</label>
-              <input type="text" required value={setupData.username} onChange={e => setSetupData({...setupData, username: e.target.value})} className="w-full p-2.5 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-left" dir="ltr" placeholder="admin" />
+              <input type="text" required value={setupData.username} onChange={e => setSetupData({...setupData, username: e.target.value})} className="w-full p-2.5 bg-white border border-slate-300 text-slate-900 font-semibold rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-left" dir="ltr" placeholder="admin" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">كلمة المرور</label>
-              <input type="password" required value={setupData.password} onChange={e => setSetupData({...setupData, password: e.target.value})} className="w-full p-2.5 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-left" dir="ltr" />
+              <input type="password" required value={setupData.password} onChange={e => setSetupData({...setupData, password: e.target.value})} className="w-full p-2.5 bg-white border border-slate-300 text-slate-900 font-semibold rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-left" dir="ltr" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">تأكيد كلمة المرور</label>
-              <input type="password" required value={setupData.confirmPassword} onChange={e => setSetupData({...setupData, confirmPassword: e.target.value})} className="w-full p-2.5 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-left" dir="ltr" />
+              <input type="password" required value={setupData.confirmPassword} onChange={e => setSetupData({...setupData, confirmPassword: e.target.value})} className="w-full p-2.5 bg-white border border-slate-300 text-slate-900 font-semibold rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-left" dir="ltr" />
             </div>
             <button type="submit" className="w-full text-white font-bold py-3 rounded-lg transition-colors shadow-sm mt-6 flex items-center justify-center gap-2 cursor-pointer" style={{ backgroundColor: 'var(--color-primary, #243f63)' }}>
               <UserPlus size={20} />
@@ -310,7 +312,7 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
                 type="text" 
                 value={recoveryCode}
                 onChange={(e) => setRecoveryCode(e.target.value)}
-                className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-center tracking-widest font-mono font-bold"
+                className="w-full p-3 bg-white border border-slate-300 text-slate-900 font-mono font-bold rounded-lg outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-center tracking-widest"
                 placeholder="أدخل رمز الاسترداد هنا"
                 required
                 dir="ltr"
@@ -345,14 +347,15 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
             )}
             
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">اسم المستخدم</label>
+              <label className="block text-sm font-bold text-slate-700 mb-2">اسم المستخدم</label>
               <div className="relative">
-                <User className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <User className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={20} />
                 <input 
                   type="text" 
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pr-10 pl-4 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-left"
+                  placeholder="admin أو اسم الموظف"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2.5 pr-10 pl-4 text-slate-900 font-bold text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-blue-500 outline-none transition-all text-left placeholder:text-slate-400"
                   dir="ltr"
                   required
                 />
@@ -360,14 +363,15 @@ export default function Login({ onLogin }: { onLogin: (role: string, username: s
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">كلمة المرور</label>
+              <label className="block text-sm font-bold text-slate-700 mb-2">كلمة المرور</label>
               <div className="relative">
-                <Lock className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <Lock className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={20} />
                 <input 
                   type="password" 
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pr-10 pl-4 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-left"
+                  placeholder="••••••••"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg py-2.5 pr-10 pl-4 text-slate-900 font-bold text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-blue-500 outline-none transition-all text-left placeholder:text-slate-400"
                   dir="ltr"
                   required
                 />

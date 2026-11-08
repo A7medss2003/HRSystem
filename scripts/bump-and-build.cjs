@@ -83,6 +83,14 @@ try {
     }
   }
 
+  // Also copy White Screen Fix Tool into HR_Update for flash drive
+  const fixBat = path.join(__dirname, '..', 'اصلاح_الشاشة_البيضاء.bat');
+  if (fs.existsSync(fixBat)) {
+    fs.copyFileSync(fixBat, path.join(hrUpdateDir, 'اصلاح_الشاشة_البيضاء.bat'));
+    console.log('✓ تم إضافة أداة [اصلاح_الشاشة_البيضاء.bat] إلى مجلد الفلاشة HR_Update');
+  }
+
+
   console.log('\n====================================================');
   console.log(`✓ اكتمل تجهيز التحديث بنجاح! الإصدار: ${newVersion}`);
   console.log('✓ مجلد [HR_Update] أصبح جاهزاً بالكامل للنسخ المباشر إلى الفلاشة (USB)');

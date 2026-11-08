@@ -156,7 +156,8 @@ export type PersonnelAffiliation = 'ضابط' | 'ضابط صف' | 'موظف' | '
 export interface MilitaryInfo {
   militaryNumber?: string;          // الرقم العسكري
   rank?: string;                    // الرتبة العسكرية (ملازم، نقيب، رائد، عقيد، عميد، لواء، عريف، رقيب، رقيب أول، مساعد، جندي، إلخ)
-  previousRank?: string;            // الرتبة السابقة
+  previousRank?: string;            // الرتبة السابقة (للضباط)
+  academicGrade?: string;           // الدرجة العلمية (لضباط الصف - تبدأ من 1 للجندي إلى 5 لرئيس عرفاء وحدة وقابلة للزيادة)
   corps?: string;                   // السلاح / الصنف (مشاة، دروع، هندسة عسكرية، إشارة، دفاع جوي، شرطة عسكرية، حرس، إلخ)
   unit?: string;                    // الوحدة / الكتيبة / التشكيل العسكري
   enlistmentDate?: string;          // تاريخ الالتحاق بالخدمة العسكرية / تاريخ التعيين
@@ -316,7 +317,7 @@ export interface AttendanceImportPreviewRow {
   matchedEmployeeName?: string;
   matchedEmployeeNationalId?: string; // الرقم الوطني للموظف المطابق
   originalNameInFile?: string;
-  matchMethod: 'fingerprintId' | 'employeeId' | 'fullName' | 'nationalId' | 'manual' | 'none';
+  matchMethod: 'fingerprintId' | 'employeeId' | 'fullName' | 'nationalId' | 'militaryNumber' | 'manual' | 'none';
   date: string;
   checkInTime?: string;
   checkOutTime?: string;

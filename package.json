@@ -2,6 +2,8 @@
   "name": "hr-system",
   "private": true,
   "version": "1.3.0",
+  "description": "منظومة الموارد البشرية وإدارة شؤون الموظفين",
+  "author": "HR System Team",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -68,6 +70,7 @@
       "dist/**/*",
       "src/server/**/*",
       "electron-main.cjs",
+      "preload.cjs",
       "githubUpdater.cjs",
       "scannerDriver.cjs",
       "package.json",

@@ -88,15 +88,22 @@ function lanServerPlugin(): Plugin {
         // 2.1 Scanner Devices Endpoint (WIA / TWAIN / SANE)
         if (req.url === '/api/scanner/devices') {
           res.setHeader('Content-Type', 'application/json');
+          const universalDevices = [
+            { id: 'wia-default', name: 'الماسح الضوئي الافتراضي لنظام التشغيل (WIA / TWAIN Default)' },
+            { id: 'usb-scan', name: 'ماسح ضوئي متصل عبر منفذ USB (Plug & Play)' },
+            { id: 'printer-scan', name: 'سكانر الطابعة متعددة الوظائف المتصلة' }
+          ];
+
           try {
             const scannerDriver = nodeRequire('./src/server/scannerDriver.cjs');
             scannerDriver.detectLocalScanners().then((devices: any) => {
-              res.end(JSON.stringify({ success: true, devices }));
+              const finalDevices = Array.isArray(devices) && devices.length > 0 ? devices : universalDevices;
+              res.end(JSON.stringify({ success: true, devices: finalDevices }));
             }).catch(() => {
-              res.end(JSON.stringify({ success: true, devices: [{ id: 'system-scanner', name: 'الماسح الضوئي الفعلي المتصل بالجهاز' }] }));
+              res.end(JSON.stringify({ success: true, devices: universalDevices }));
             });
           } catch {
-            res.end(JSON.stringify({ success: true, devices: [{ id: 'system-scanner', name: 'الماسح الضوئي الفعلي المتصل بالجهاز' }] }));
+            res.end(JSON.stringify({ success: true, devices: universalDevices }));
           }
           return;
         }

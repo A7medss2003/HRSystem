@@ -10,6 +10,8 @@ import clsx from 'clsx';
 import { Document, DocumentCategory } from '../types';
 import { saveDataUrlToLocal } from '../lib/fileStorage';
 import { toast } from './Toast';
+import ScannerSelector from './ScannerSelector';
+import { scannerService } from '../services/scannerService';
 
 interface DocumentScannerModalProps {
   isOpen: boolean;
@@ -55,7 +57,8 @@ export default function DocumentScannerModal({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
 
-  // Hardware Scanner simulation state
+  // Hardware Scanner state
+  const [selectedScanner, setSelectedScanner] = useState<string>('');
   const [scannerDpi, setScannerDpi] = useState<number>(300);
   const [scannerColorMode, setScannerColorMode] = useState<'color' | 'grayscale' | 'bw'>('color');
   const [scannerPageSize, setScannerPageSize] = useState<'A4' | 'passport' | 'id_card'>('A4');
@@ -227,10 +230,29 @@ export default function DocumentScannerModal({
   };
 
   // Trigger Hardware Scanner Scan
-  const triggerHardwareScan = () => {
+  const triggerHardwareScan = async () => {
     setIsScanning(true);
     setScanProgress(10);
-    setScanStatusText('جاري تهيئة الماسح الضوئي وتسخين المصباح البصري...');
+    setScanStatusText(selectedScanner ? `جاري تهيئة الماسح (${selectedScanner})...` : 'جاري تهيئة الماسح الضوئي...');
+
+    if (scannerService.isElectronAvailable() || selectedScanner) {
+      try {
+        setScanProgress(35);
+        setScanStatusText(`جاري سحب المستند من الجهاز [${selectedScanner || 'الماسح الافتراضي'}]...`);
+        const res = await scannerService.scanFromDevice(selectedScanner);
+        if (res && res.success && (res.dataUrl || res.data)) {
+          const finalUrl = res.dataUrl || `data:${res.mimeType || 'application/pdf'};base64,${res.data}`;
+          setScanProgress(100);
+          setScanStatusText('اكتمل المسح الضوئي بنجاح!');
+          setRawImageData(finalUrl);
+          setIsScanning(false);
+          toast(`تم استقبال ورقة المستند من جهاز [${(selectedScanner || 'الماسح الضوئي').split('(')[0].trim()}] بنجاح!`);
+          return;
+        }
+      } catch (e) {
+        console.warn('Real scanner fallback:', e);
+      }
+    }
 
     // Multi-step realistic scanner sequence
     setTimeout(() => {
@@ -932,19 +954,26 @@ export default function DocumentScannerModal({
               </div>
             ) : sourceMode === 'scanner' ? (
               /* Scanner Device Configurations */
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 grid grid-cols-3 gap-3 text-xs">
-                <div>
-                  <label className="block text-slate-600 font-bold mb-1">دقة المسح (Resolution):</label>
-                  <select
-                    value={scannerDpi}
-                    onChange={(e) => setScannerDpi(Number(e.target.value))}
-                    className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs font-medium outline-none focus:border-blue-500"
-                  >
-                    <option value={150}>150 DPI (مسودة سريعة)</option>
-                    <option value={300}>300 DPI (قياسي موثق)</option>
-                    <option value={600}>600 DPI (دقة عالية للشهادات)</option>
-                  </select>
-                </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3 text-xs">
+                <ScannerSelector
+                  selectedScanner={selectedScanner}
+                  onSelectScanner={setSelectedScanner}
+                  disabled={isScanning}
+                />
+
+                <div className="grid grid-cols-3 gap-3 pt-2 border-t border-slate-200">
+                  <div>
+                    <label className="block text-slate-600 font-bold mb-1">دقة المسح (Resolution):</label>
+                    <select
+                      value={scannerDpi}
+                      onChange={(e) => setScannerDpi(Number(e.target.value))}
+                      className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs font-medium outline-none focus:border-blue-500"
+                    >
+                      <option value={150}>150 DPI (مسودة سريعة)</option>
+                      <option value={300}>300 DPI (قياسي موثق)</option>
+                      <option value={600}>600 DPI (دقة عالية للشهادات)</option>
+                    </select>
+                  </div>
 
                 <div>
                   <label className="block text-slate-600 font-bold mb-1">نمط الألوان:</label>
@@ -972,7 +1001,8 @@ export default function DocumentScannerModal({
                   </select>
                 </div>
               </div>
-            ) : sourceMode === 'camera' && videoDevices.length > 1 ? (
+            </div>
+          ) : sourceMode === 'camera' && videoDevices.length > 1 ? (
               /* Camera Device Selector */
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between text-xs">
                 <span className="font-bold text-slate-700">اختر الكاميرا الموصلة:</span>

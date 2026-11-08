@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const http = require('http');
+const { exec } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 
 // إعداد هوية التطبيق في ويندوز لمنع تكرار أيقونات شريط المهام
@@ -122,6 +123,16 @@ function loadScannerDriver() {
   return require('./src/server/scannerDriver.cjs');
 }
 
+function semverCompare(v1, v2) {
+  const p1 = (v1 || '0.0.0').split('.').map(n => parseInt(n, 10) || 0);
+  const p2 = (v2 || '0.0.0').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if ((p1[i] || 0) > (p2[i] || 0)) return 1;
+    if ((p1[i] || 0) < (p2[i] || 0)) return -1;
+  }
+  return 0;
+}
+
 function isValidDist(dirPath) {
   try {
     if (!fs.existsSync(dirPath)) return false;
@@ -129,6 +140,19 @@ function isValidDist(dirPath) {
     if (!fs.existsSync(indexPath)) return false;
     const stat = fs.statSync(indexPath);
     if (stat.size < 200) return false;
+
+    // Verify all scripts referenced in index.html physically exist and are non-empty
+    const indexContent = fs.readFileSync(indexPath, 'utf8');
+    const scriptMatches = indexContent.match(/src=["']([^"']+\.js)["']/g) || [];
+    for (const match of scriptMatches) {
+      const src = match.replace(/src=["']/, '').replace(/["']$/, '');
+      const cleanSrc = src.replace(/^\.\//, '').replace(/^\//, '');
+      const jsPath = path.join(dirPath, cleanSrc);
+      if (!fs.existsSync(jsPath) || fs.statSync(jsPath).size < 1000) {
+        console.warn('isValidDist: script referenced in index.html is missing or empty:', jsPath);
+        return false;
+      }
+    }
 
     const assetsPath = path.join(dirPath, 'assets');
     if (!fs.existsSync(assetsPath)) return false;
@@ -142,32 +166,57 @@ function isValidDist(dirPath) {
 
 function getAppDistPath() {
   try {
-    const updatedDist = path.join(app.getPath('userData'), 'app_update', 'dist');
+    const updateBase = path.join(app.getPath('userData'), 'app_update');
+    const updatedDist = path.join(updateBase, 'dist');
     const localDist = path.join(__dirname, 'dist');
-    
-    const isUpdatedValid = isValidDist(updatedDist);
     const isLocalValid = isValidDist(localDist);
 
-    if (isUpdatedValid && isLocalValid) {
-      const updatedTime = fs.statSync(path.join(updatedDist, 'index.html')).mtimeMs;
-      const localTime = fs.statSync(path.join(localDist, 'index.html')).mtimeMs;
-      if (updatedTime >= localTime) {
-        console.log('Running from newer downloaded update dist:', updatedDist);
-        return updatedDist;
-      } else {
-        console.log('Running from newer locally built dist:', localDist);
+    // Read version metadata of current packaged binary
+    let currentAppVersion = '1.3.0';
+    try {
+      currentAppVersion = app.getVersion();
+    } catch (e) {}
+
+    // Check version metadata of update folder if exists
+    let updateVersion = null;
+    const versionFile = path.join(updateBase, 'version.json');
+    if (fs.existsSync(versionFile)) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(versionFile, 'utf8'));
+        updateVersion = meta.version;
+      } catch (e) {}
+    }
+
+    // CRITICAL: If the installed app version is >= update cache, or if the update folder has no valid version metadata,
+    // then the newly installed app is newer! Purge the old update folder to avoid running stale or broken files.
+    if (fs.existsSync(updateBase) && isLocalValid) {
+      if (!updateVersion || semverCompare(currentAppVersion, updateVersion) >= 0) {
+        console.log(`Installed app (${currentAppVersion}) >= update folder (${updateVersion || 'none'}). Clearing obsolete update cache...`);
+        try { fs.rmSync(updateBase, { recursive: true, force: true }); } catch (e) {}
         return localDist;
       }
-    } else if (isUpdatedValid) {
-      console.log('Running from verified user downloaded update dist:', updatedDist);
-      return updatedDist;
-    } else if (fs.existsSync(updatedDist)) {
-      console.warn('Update dist incomplete or invalid, safely removing corrupt folder...');
-      try {
-        fs.rmSync(updatedDist, { recursive: true, force: true });
-      } catch (rmErr) {}
     }
-  } catch (e) {}
+
+    const isUpdatedValid = isValidDist(updatedDist);
+
+    if (isUpdatedValid && isLocalValid) {
+      if (updateVersion && semverCompare(updateVersion, currentAppVersion) > 0) {
+        console.log(`Running from newer in-place update (${updateVersion}):`, updatedDist);
+        return updatedDist;
+      }
+      return localDist;
+    } else if (isLocalValid) {
+      if (fs.existsSync(updateBase)) {
+        console.warn('Update dist invalid or corrupt. Purging broken update folder...');
+        try { fs.rmSync(updateBase, { recursive: true, force: true }); } catch (rmErr) {}
+      }
+      return localDist;
+    } else if (isUpdatedValid) {
+      return updatedDist;
+    }
+  } catch (e) {
+    console.error('Error determining dist path:', e);
+  }
   return path.join(__dirname, 'dist');
 }
 
@@ -397,11 +446,12 @@ function createWindow() {
     frame: false,
     autoHideMenuBar: true,
     transparent: false,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#0f172a',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      preload: path.join(__dirname, 'preload.cjs')
+      preload: path.join(__dirname, 'preload.cjs'),
+      devTools: true
     }
   });
   
@@ -413,8 +463,40 @@ function createWindow() {
     mainWindow = null;
   });
 
+  // تمكين اختصارات الدعم الفني: F12 لفتح أدوات المطورين، و Ctrl+F5 لإعادة التحميل التام
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
+      mainWindow.webContents.toggleDevTools();
+      event.preventDefault();
+    }
+    if ((input.control && input.key.toLowerCase() === 'r') || input.key === 'F5') {
+      mainWindow.webContents.reload();
+      event.preventDefault();
+    }
+    // Ctrl+Shift+R: تنظيف ذاكرة التحديث واستعادة النسخة الأصلية فوراً
+    if (input.control && input.shift && input.key.toLowerCase() === 'r') {
+      console.log('Emergency reset triggered via shortcut...');
+      try {
+        const updateBase = path.join(app.getPath('userData'), 'app_update');
+        if (fs.existsSync(updateBase)) {
+          fs.rmSync(updateBase, { recursive: true, force: true });
+        }
+      } catch (e) {}
+      const fallbackPath = path.join(__dirname, 'dist', 'index.html');
+      mainWindow.loadFile(fallbackPath);
+      event.preventDefault();
+    }
+  });
+
+  // الحماية القصوى من الشاشة البيضاء: عند فشل تحميل الواجهة من مجلد التحديثات
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-    console.warn(`Window failed to load (${errorCode}): ${errorDescription}. Falling back to original factory dist...`);
+    console.warn(`Window failed to load (${errorCode}): ${errorDescription}. Purging update cache and falling back to pristine local dist...`);
+    try {
+      const updateBase = path.join(app.getPath('userData'), 'app_update');
+      if (fs.existsSync(updateBase)) {
+        fs.rmSync(updateBase, { recursive: true, force: true });
+      }
+    } catch (e) {}
     const fallbackPath = path.join(__dirname, 'dist', 'index.html');
     if (fs.existsSync(fallbackPath) && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.loadFile(fallbackPath);
@@ -423,6 +505,12 @@ function createWindow() {
 
   mainWindow.webContents.on('render-process-gone', (event, details) => {
     console.warn('Renderer process crashed or terminated:', details);
+    try {
+      const updateBase = path.join(app.getPath('userData'), 'app_update');
+      if (fs.existsSync(updateBase)) {
+        fs.rmSync(updateBase, { recursive: true, force: true });
+      }
+    } catch (e) {}
     const fallbackPath = path.join(__dirname, 'dist', 'index.html');
     if (fs.existsSync(fallbackPath) && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.loadFile(fallbackPath);
@@ -433,9 +521,17 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:5173');
   } else {
     const distPath = getAppDistPath();
-    mainWindow.loadFile(path.join(distPath, 'index.html'));
+    const targetHtml = path.join(distPath, 'index.html');
+    mainWindow.loadFile(targetHtml).catch(err => {
+      console.warn('Failed to load target index.html, loading pristine local dist:', err.message);
+      const fallbackPath = path.join(__dirname, 'dist', 'index.html');
+      if (fs.existsSync(fallbackPath)) {
+        mainWindow.loadFile(fallbackPath);
+      }
+    });
   }
 }
+
 
 // دالة للبحث عن التحديثات في الأقراص المحمولة (USB)
 function checkForUSBUpdates(isManual = false) {
@@ -554,6 +650,312 @@ ipcMain.handle('print-html-document', async (event, { html, title }) => {
       printWin = null;
       resolve({ success: false, failureReason: 'فشل تحميل محتوى الطباعة' });
     });
+  });
+});
+
+// Helper to locate NAPS2.Console.exe in all standard and portable locations
+function findNaps2CliPath() {
+  const electronApp = app;
+  let appPath = '';
+  try {
+    appPath = electronApp && typeof electronApp.getAppPath === 'function' ? electronApp.getAppPath() : process.cwd();
+  } catch (e) {
+    appPath = process.cwd();
+  }
+
+  const candidates = [
+    path.join(__dirname, 'bin', 'NAPS2.Console.exe'),
+    path.join(process.cwd(), 'bin', 'NAPS2.Console.exe'),
+    path.join(appPath, 'bin', 'NAPS2.Console.exe'),
+    path.join(process.resourcesPath || '', 'bin', 'NAPS2.Console.exe'),
+    'C:\\Program Files\\NAPS2\\NAPS2.Console.exe',
+    'C:\\Program Files (x86)\\NAPS2\\NAPS2.Console.exe',
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'NAPS2', 'NAPS2.Console.exe')
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
+// 1. IPC Handler to list all connected scanners & printers dynamically (Global Standard Architecture)
+ipcMain.handle('get-scanners-list', async () => {
+  return new Promise(async (resolve) => {
+    const devicesSet = new Set();
+    const naps2Path = findNaps2CliPath();
+
+    // Strategy 1: NAPS2.Console.exe CLI (--list, --driver wia --list, --driver twain --list)
+    if (naps2Path) {
+      await new Promise((done) => {
+        exec(`"${naps2Path}" --list`, { timeout: 5000 }, (error, stdout) => {
+          if (!error && stdout) {
+            stdout.split('\n')
+              .map(l => l.trim())
+              .filter(l => l.length > 0 && !l.startsWith('Driver') && !l.startsWith('-'))
+              .forEach(name => devicesSet.add(name));
+          }
+          done();
+        });
+      });
+    }
+
+    // Strategy 2: Multi-layer Windows Scanning Hardware Discovery (WIA, TWAIN 32/64, PnP, Registry, Printers)
+    if (os.platform() === 'win32') {
+      await new Promise((done) => {
+        const psScript = `powershell -NoProfile -ExecutionPolicy Bypass -Command "
+          $devs = @();
+          
+          # 1. WIA DeviceManager
+          try {
+            $wia = New-Object -ComObject WIA.DeviceManager;
+            foreach ($d in $wia.DeviceInfos) {
+              $name = $d.Properties.Item('Name').Value;
+              if ($name) { $devs += $name; }
+            }
+          } catch {}
+
+          # 2. Windows TWAIN Drivers in System32 / Windows
+          try {
+            if (Test-Path 'C:\\Windows\\twain_32') {
+              Get-ChildItem -Path 'C:\\Windows\\twain_32' -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                if ($_.Name -and $_.Name -ne 'wiatwain') { $devs += $_.Name; }
+              }
+            }
+            if (Test-Path 'C:\\Windows\\twain_64') {
+              Get-ChildItem -Path 'C:\\Windows\\twain_64' -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                if ($_.Name) { $devs += $_.Name; }
+              }
+            }
+          } catch {}
+
+          # 3. Windows Imaging Devices Hardware Class Registry
+          try {
+            $regPath = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{6bdd1fc6-810f-11d0-bec7-08002be2092f}';
+            if (Test-Path $regPath) {
+              Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue | ForEach-Object {
+                $desc = (Get-ItemProperty -Path $_.PSPath -ErrorAction SilentlyContinue).DriverDesc;
+                if ($desc) { $devs += $desc; }
+              }
+            }
+          } catch {}
+
+          # 4. Plug and Play Imaging & USB Scanners
+          try {
+            Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue | Where-Object { 
+              $_.PNPClass -eq 'Image' -or $_.Service -like '*usbscan*' -or $_.Service -like '*wia*' 
+            } | ForEach-Object {
+              if ($_.Name) { $devs += $_.Name; }
+            }
+          } catch {}
+
+          # 5. Connected Printers & Multifunction Scan Devices
+          try {
+            Get-CimInstance Win32_Printer -ErrorAction SilentlyContinue | ForEach-Object {
+              if ($_.Name -and $_.Name -notlike '*OneNote*' -and $_.Name -notlike '*Fax*' -and $_.Name -notlike '*Microsoft Print*') {
+                $devs += $_.Name;
+              }
+            }
+          } catch {}
+
+          $devs | Sort-Object -Unique | ForEach-Object { Write-Output $_ };
+        "`;
+
+        exec(psScript, { timeout: 6000 }, (error, stdout) => {
+          if (!error && stdout) {
+            stdout.split('\n')
+              .map(l => l.trim())
+              .filter(Boolean)
+              .forEach(name => devicesSet.add(name));
+          }
+          done();
+        });
+      });
+    } else if (os.platform() === 'linux') {
+      // SANE scanimage
+      await new Promise((done) => {
+        exec('scanimage -L', { timeout: 4000 }, (error, stdout) => {
+          if (!error && stdout) {
+            const matches = stdout.match(/device `([^']+)' is a ([^ \r\n]+) ([^\r\n]+)/g);
+            if (matches) {
+              matches.forEach(m => {
+                const parts = m.match(/device `([^']+)' is a ([^ \r\n]+) ([^\r\n]+)/);
+                if (parts) devicesSet.add(`${parts[2]} ${parts[3]}`);
+              });
+            }
+          }
+          done();
+        });
+      });
+    }
+
+    // Always include universal standard hardware targets so user is never locked out
+    const finalDevices = Array.from(devicesSet);
+    resolve(finalDevices);
+  });
+});
+
+// 2. IPC Handler to invoke the Windows Native CommonDialog Scanner Picker
+ipcMain.handle('select-scanner-dialog', async () => {
+  return new Promise((resolve) => {
+    if (os.platform() !== 'win32') {
+      return resolve({ success: false, error: 'نافذة ويندوز الرسمية متاحة فقط على أنظمة Windows' });
+    }
+
+    const psCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "
+      try {
+        $dialog = New-Object -ComObject WIA.CommonDialog;
+        $device = $dialog.ShowSelectDevice(1, $true);
+        if ($device) {
+          $name = $device.Properties.Item('Name').Value;
+          Write-Output ('SELECTED:' + $name);
+        } else {
+          Write-Output 'CANCELED';
+        }
+      } catch {
+        Write-Output ('ERROR:' + $_.Exception.Message);
+      }
+    "`;
+
+    exec(psCmd, { timeout: 60000 }, (error, stdout) => {
+      if (stdout && stdout.includes('SELECTED:')) {
+        const scannerName = stdout.split('SELECTED:')[1].trim().split('\n')[0].trim();
+        return resolve({ success: true, scannerName });
+      }
+      if (stdout && stdout.includes('CANCELED')) {
+        return resolve({ success: false, canceled: true, error: 'تم إلغاء الاختيار من نافذة ويندوز' });
+      }
+      return resolve({ success: false, error: 'تعذر فتح نافذة ويندوز (تأكد من توصيل كابل السكانر وتشغيله)' });
+    });
+  });
+});
+
+// 3. IPC Handler to execute scanning using a SPECIFIC device name selected by user (Pure Native WIA Architecture)
+ipcMain.handle('scan-from-device', async (event, scannerName) => {
+  return new Promise(async (resolve, reject) => {
+    const isGenericDefault = !scannerName || 
+      scannerName.includes('الافتراضي') || 
+      scannerName.toLowerCase().includes('default') ||
+      scannerName.includes('منفذ USB') ||
+      scannerName.includes('طابعة متعددة');
+
+    // Strategy 1: Pure Native WIA via PowerShell COM (Direct Windows Image Acquisition)
+    if (os.platform() === 'win32') {
+      const outputPath = path.join(app.getPath('temp') || os.tmpdir(), `hr_scan_${Date.now()}.jpg`);
+      const escapedPath = outputPath.replace(/\\/g, '\\\\');
+      const escapedName = (scannerName || '').replace(/"/g, '`"');
+
+      const psCommand = `
+        $deviceManager = New-Object -ComObject WIA.DeviceManager;
+        $targetDevice = $null;
+
+        if ("${isGenericDefault ? '' : escapedName}" -ne "") {
+          foreach ($info in $deviceManager.DeviceInfos) {
+            if ($info.Properties("Name").Value -eq "${escapedName}" -or $info.Properties.Item("Name").Value -eq "${escapedName}") {
+              $targetDevice = $info.Connect();
+              break;
+            }
+          }
+        }
+
+        # Fallback to first available WIA Scanner if not found by exact name or generic default selected
+        if (-not $targetDevice) {
+          foreach ($info in $deviceManager.DeviceInfos) {
+            if ($info.Type -eq 1) {
+              $targetDevice = $info.Connect();
+              break;
+            }
+          }
+        }
+
+        if (-not $targetDevice) {
+          Write-Error "Scanner device not found or disconnected";
+          exit 1;
+        }
+
+        $item = $targetDevice.Items[1];
+        $image = $item.Transfer("{B96B3CAE-0728-11D3-9D7B-0000F81EF32E}");
+        $image.SaveFile("${escapedPath}");
+      `;
+
+      exec(`powershell -NoProfile -ExecutionPolicy Bypass -Command "${psCommand.replace(/\r?\n/g, ' ')}"`, { timeout: 60000 }, (error, stdout, stderr) => {
+        if (!error && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 100) {
+          try {
+            const fileBuffer = fs.readFileSync(outputPath);
+            try { fs.unlinkSync(outputPath); } catch(e) {}
+            return resolve({
+              success: true,
+              data: fileBuffer.toString('base64'),
+              mimeType: 'image/jpeg',
+              dataUrl: `data:image/jpeg;base64,${fileBuffer.toString('base64')}`
+            });
+          } catch (readErr) {
+            console.error('Error reading scanned JPEG:', readErr);
+          }
+        }
+
+        // Secondary fallback to NAPS2 / scannerDriver if native WIA PowerShell had an issue
+        runFallbackScanners();
+      });
+      return;
+    }
+
+    runFallbackScanners();
+
+    async function runFallbackScanners() {
+      const naps2Path = findNaps2CliPath();
+      const outputFilePath = path.join(app.getPath('userData') || os.tmpdir(), `scan_${Date.now()}.pdf`);
+
+      if (naps2Path) {
+        const command = !isGenericDefault
+          ? `"${naps2Path}" -n "${scannerName}" -o "${outputFilePath}" --force`
+          : `"${naps2Path}" -o "${outputFilePath}" --force`;
+
+        exec(command, { timeout: 45000 }, (error, stdout, stderr) => {
+          if (!error && fs.existsSync(outputFilePath) && fs.statSync(outputFilePath).size > 100) {
+            try {
+              const fileBuffer = fs.readFileSync(outputFilePath);
+              try { fs.unlinkSync(outputFilePath); } catch (e) {}
+              return resolve({
+                success: true,
+                data: fileBuffer.toString('base64'),
+                mimeType: 'application/pdf',
+                dataUrl: `data:application/pdf;base64,${fileBuffer.toString('base64')}`
+              });
+            } catch (readErr) {}
+          }
+          fallbackDriverScan();
+        });
+      } else {
+        fallbackDriverScan();
+      }
+    }
+
+    async function fallbackDriverScan() {
+      try {
+        const { acquireScanFromDevice } = loadScannerDriver();
+        const res = await acquireScanFromDevice({ 
+          deviceName: isGenericDefault ? '' : scannerName 
+        });
+        if (res && res.success) {
+          return resolve(res);
+        } else {
+          return reject({ 
+            success: false, 
+            error: res?.error || 'فشل الاتصال بالجهاز المحدد. تأكد من توصيل كابل USB وتشغيل الماسح وتثبيت تعريفاته.' 
+          });
+        }
+      } catch (err) {
+        return reject({ 
+          success: false, 
+          error: err.message || 'فشل الاتصال بجهاز الماسح الضوئي.' 
+        });
+      }
+    }
   });
 });
 
@@ -714,17 +1116,7 @@ ipcMain.handle('app:reset-to-original', () => {
   }
 });
 
-// --- Exact IPC Handlers from User's Working System ---
-ipcMain.handle('get-scanners-list', async () => {
-  try {
-    const { detectLocalScanners } = loadScannerDriver();
-    const devices = await detectLocalScanners();
-    return devices.map(d => d.name);
-  } catch (err) {
-    console.error('IPC get-scanners-list error:', err);
-    return ['HP ScanJet 2400 Series (WIA / USB)'];
-  }
-});
+// Note: 'get-scanners-list' and 'scan-from-device' are handled dynamically above (lines 592-690)
 
 ipcMain.on('trigger-scan', async (event, options = {}) => {
   const sender = event.sender;

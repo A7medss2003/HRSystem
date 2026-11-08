@@ -235,32 +235,39 @@ export default function DirectScannerModal({
   // Start Scanning document matching user's reference implementation
   const startScanning = async () => {
     if (isHardwareScanning) return;
+    const targetScanner = selectedScannerName || selectedScannerId;
+    if (!targetScanner) {
+      const msg = 'الرجاء اختيار جهاز سكانر متصل أولاً.';
+      setErrorMessage(msg);
+      toast(msg, 'error');
+      return;
+    }
+
     setIsHardwareScanning(true);
     setErrorMessage(null);
     setScanProgress(15);
-    setHardwareScanStep('جاري الاتصال بالسكانر وسحب الملف...');
+    setHardwareScanStep(`جاري الاتصال بالجهاز (${targetScanner}) وسحب الملف...`);
 
     try {
-      const response = await scannerService.scanDocument({
-        deviceId: selectedScannerId || '',
-        dpi: scanDpi,
-        colorMode: scanColorMode,
-        format: 'pdf'
-      });
+      // Directing ScannerService to pull data explicitly from the selected device name
+      const response = await scannerService.scanFromDevice(targetScanner);
 
       if (response && response.success && (response.dataUrl || response.data)) {
         const finalUrl = response.dataUrl || `data:${response.mimeType || 'application/pdf'};base64,${response.data}`;
         setScannedImageUrl(finalUrl);
         setScanProgress(100);
         setHardwareScanStep('اكتمل سحب واستلام المستند بنجاح!');
-        toast('تم سحب المستند بنجاح من الماسح الضوئي! ✅');
+        toast(`تم سحب المستند بنجاح من جهاز [${targetScanner.split('(')[0].trim()}]! ✅`, 'success');
       } else {
-        const msg = response?.error || 'تعذر الاتصال بالماسح الضوئي. يرجى التأكد من توصيل الجهاز وتثبيت برامج التشغيل.';
+        const msg = response?.error || 'فشل الاتصال بالجهاز المحدد. تأكد من توصيله بشكل صحيح وتثبيت تعريفاته.';
         setErrorMessage(msg);
+        toast(msg, 'error');
       }
     } catch (error: any) {
       console.error('Scan Request Failed:', error);
-      setErrorMessage('تعذر الاتصال بالماسح الضوئي. يرجى التأكد من توصيل الجهاز وتثبيت برامج التشغيل.');
+      const msg = error?.error || error?.message || 'فشل الاتصال بالجهاز المحدد. تأكد من توصيله بشكل صحيح وتثبيت تعريفاته.';
+      setErrorMessage(msg);
+      toast(msg, 'error');
     } finally {
       setIsHardwareScanning(false);
     }
@@ -539,26 +546,27 @@ export default function DirectScannerModal({
 
   return (
     <div 
-      className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200" 
+      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200" 
       dir="rtl"
       onClick={onClose}
     >
       <div 
-        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200"
+        className="scanner-container bg-[#1e1e24] text-[#e0e0e6] rounded-2xl shadow-2xl border border-[#2d2d35] w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/70 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#2d2d35] bg-[#18181f] shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-2xs">
-              <Printer size={16} />
+            <div className="w-8 h-8 rounded-lg bg-[#00adb5] text-slate-900 flex items-center justify-center shadow-md font-bold">
+              <Printer size={17} />
             </div>
             <div>
-              <h3 className="font-bold text-slate-900 text-sm">
-                قسم سحب وأرشفة وثائق الموظفين
+              <h3 className="font-bold text-[#e0e0e6] text-sm flex items-center gap-2">
+                <span>سحب وأرشفة وثائق الموظفين (WIA Native Scanner)</span>
+                <span className="text-[10px] bg-[#00adb5]/20 text-[#00adb5] border border-[#00adb5]/40 px-2 py-0.5 rounded-full font-mono">WIA</span>
               </h3>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-slate-400">
                 سحب المستندات عبر السكانر وحفظها مباشرة في ملف الموظف
               </p>
             </div>
@@ -567,7 +575,7 @@ export default function DirectScannerModal({
             <button 
               type="button"
               onClick={onClose}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-700 border border-slate-200 hover:border-red-200 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#141419] hover:bg-red-950/40 text-slate-300 hover:text-red-400 border border-[#2d2d35] hover:border-red-800/50 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
               title="تسكير القائمة والعودة"
             >
               <X size={15} />
@@ -580,10 +588,10 @@ export default function DirectScannerModal({
         <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-5">
           
           {/* شريط المساعدة وأزرار التراجع وتسكير القائمة */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5 p-3 bg-slate-50/90 border border-slate-200 rounded-xl">
-            <div className="flex items-center gap-2 text-xs text-slate-600">
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-              <span className="font-semibold text-slate-700">أزرار مساعدة سريعة للتحكم:</span>
+          <div className="flex flex-wrap items-center justify-between gap-2.5 p-3 bg-[#141419] border border-[#2d2d35] rounded-xl">
+            <div className="flex items-center gap-2 text-xs text-slate-300">
+              <span className="w-2 h-2 rounded-full bg-[#00adb5] animate-pulse"></span>
+              <span className="font-semibold">أزرار مساعدة سريعة للتحكم:</span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -596,7 +604,7 @@ export default function DirectScannerModal({
                     setIsBwFilter(false);
                     toast('تم التراجع وإلغاء المستند المسحوب بنجاح ✅');
                   }}
-                  className="px-3 py-1.5 bg-white hover:bg-amber-50 text-amber-700 hover:text-amber-800 border border-amber-200 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                  className="px-3 py-1.5 bg-[#1e1e24] hover:bg-amber-950/40 text-amber-400 hover:text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
                   title="التراجع عن المسح الحالي والبدء من جديد"
                 >
                   <RotateCw size={13} />
@@ -607,7 +615,7 @@ export default function DirectScannerModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3.5 py-1.5 bg-white hover:bg-red-50 text-red-600 hover:text-red-700 border border-red-200 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                className="px-3.5 py-1.5 bg-[#1e1e24] hover:bg-red-950/40 text-red-400 hover:text-red-300 border border-red-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
                 title="تسكير القائمة والرجوع"
               >
                 <X size={14} />
@@ -618,15 +626,15 @@ export default function DirectScannerModal({
           
           {/* Error Message Alert */}
           {errorMessage && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-center justify-between animate-in fade-in">
+            <div className="p-3 bg-red-950/30 border border-red-800/50 rounded-xl text-red-300 text-xs flex items-center justify-between animate-in fade-in">
               <div className="flex items-center gap-2">
-                <AlertCircle size={16} className="text-red-500 shrink-0" />
+                <AlertCircle size={16} className="text-red-400 shrink-0" />
                 <span className="font-medium">{errorMessage}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setErrorMessage(null)}
-                className="text-red-400 hover:text-red-600 font-bold px-1.5 cursor-pointer"
+                className="text-red-400 hover:text-red-300 font-bold px-1.5 cursor-pointer"
               >
                 ✕
               </button>
@@ -634,7 +642,7 @@ export default function DirectScannerModal({
           )}
 
           {/* مكون ScannerSelector لاختيار الماسح المتصل الفعلي وعرض التنبيه في حال عدم وجود جهاز */}
-          <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-3.5 space-y-3">
+          <div className="bg-[#141419] border border-[#2d2d35] rounded-xl p-3.5 space-y-3">
             <ScannerSelector
               selectedScanner={selectedScannerName}
               onSelectScanner={(name) => {
@@ -642,19 +650,20 @@ export default function DirectScannerModal({
                 setSelectedScannerId(name);
               }}
               disabled={isHardwareScanning}
+              darkMode={true}
             />
 
             {/* خيارات الدقة واللون مدمجة ومختصرة */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/80 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#2d2d35] text-xs">
               <div className="flex items-center gap-1.5">
-                <span className="text-[11px] text-slate-500 font-semibold">الدقة:</span>
+                <span className="text-[11px] text-slate-400 font-semibold">الدقة:</span>
                 {[150, 300, 600].map((dpi) => (
                   <button
                     key={dpi}
                     type="button"
                     onClick={() => setScanDpi(dpi)}
                     className={`px-2 py-0.5 rounded text-[11px] font-bold cursor-pointer transition-colors ${
-                      scanDpi === dpi ? 'bg-blue-600 text-white shadow-2xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      scanDpi === dpi ? 'bg-[#00adb5] text-slate-900 shadow-2xs' : 'bg-[#1e1e24] text-slate-300 border border-[#2d2d35] hover:bg-[#252530]'
                     }`}
                   >
                     {dpi} DPI
@@ -663,7 +672,7 @@ export default function DirectScannerModal({
               </div>
 
               <div className="flex items-center gap-1.5">
-                <span className="text-[11px] text-slate-500 font-semibold">اللون:</span>
+                <span className="text-[11px] text-slate-400 font-semibold">اللون:</span>
                 {[
                   { id: 'color', label: 'ملون' },
                   { id: 'grayscale', label: 'رمادي' },
@@ -674,7 +683,7 @@ export default function DirectScannerModal({
                     type="button"
                     onClick={() => setScanColorMode(mode.id as any)}
                     className={`px-2 py-0.5 rounded text-[11px] font-bold cursor-pointer transition-colors ${
-                      scanColorMode === mode.id ? 'bg-blue-600 text-white shadow-2xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      scanColorMode === mode.id ? 'bg-[#00adb5] text-slate-900 shadow-2xs' : 'bg-[#1e1e24] text-slate-300 border border-[#2d2d35] hover:bg-[#252530]'
                     }`}
                   >
                     {mode.label}
@@ -691,23 +700,23 @@ export default function DirectScannerModal({
                 type="button"
                 onClick={startScanning}
                 disabled={isHardwareScanning}
-                className="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-60 text-white rounded-xl text-sm font-bold shadow-sm hover:shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.99]"
+                className="w-full py-3.5 px-4 bg-[#00adb5] hover:bg-[#00989f] disabled:opacity-60 text-slate-950 font-extrabold rounded-xl text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.99]"
               >
                 {isHardwareScanning ? (
-                  <div className="w-full flex flex-col items-center gap-1.5 py-0.5">
+                  <div className="w-full flex flex-col items-center gap-1.5 py-0.5 text-slate-950">
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-2">
-                        <Loader2 size={18} className="animate-spin text-white shrink-0" />
-                        <span className="text-xs font-bold">{hardwareScanStep || 'جاري الاتصال بالسكانر وسحب الملف...'}</span>
+                        <Loader2 size={18} className="animate-spin text-slate-950 shrink-0" />
+                        <span className="text-xs font-bold">{hardwareScanStep || `جاري السحب من ${selectedScannerName || 'السكانر'}...`}</span>
                       </div>
-                      <span className="text-xs font-bold bg-white/25 px-2 py-0.5 rounded text-white">
+                      <span className="text-xs font-bold bg-slate-900/20 px-2 py-0.5 rounded text-slate-950">
                         {scanProgress}%
                       </span>
                     </div>
                     {/* Progress Bar */}
-                    <div className="w-full bg-white/25 rounded-full h-1.5 overflow-hidden">
+                    <div className="w-full bg-slate-950/20 rounded-full h-1.5 overflow-hidden">
                       <div 
-                        className="bg-white h-full transition-all duration-300 rounded-full"
+                        className="bg-slate-950 h-full transition-all duration-300 rounded-full"
                         style={{ width: `${Math.min(100, Math.max(8, scanProgress))}%` }}
                       />
                     </div>
@@ -715,34 +724,34 @@ export default function DirectScannerModal({
                 ) : (
                   <>
                     <Printer size={18} />
-                    <span>اضغط هنا لبدء السحب من السكانر</span>
+                    <span>{selectedScannerName ? `ابدأ السحب من السكانر (${selectedScannerName.split('(')[0].trim()})` : 'ابدأ السحب من السكانر'}</span>
                   </>
                 )}
               </button>
             </div>
 
             {/* خيارات سريعة مختصرة */}
-            <div className="flex items-center justify-center gap-4 text-xs text-slate-500 pt-0.5">
+            <div className="flex items-center justify-center gap-4 text-xs text-slate-400 pt-0.5">
               <button
                 type="button"
                 onClick={handleStartCamera}
                 disabled={isHardwareScanning}
-                className="hover:text-blue-600 font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                className="hover:text-[#00adb5] font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
               >
                 <Camera size={13} />
                 <span>الكاميرا</span>
               </button>
-              <span className="text-slate-300">•</span>
+              <span className="text-[#2d2d35]">•</span>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isHardwareScanning}
-                className="hover:text-blue-600 font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                className="hover:text-[#00adb5] font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
               >
                 <Upload size={13} />
                 <span>رفع ملف ممسوح</span>
               </button>
-              <span className="text-slate-300">•</span>
+              <span className="text-[#2d2d35]">•</span>
               <span className="text-slate-400 flex items-center gap-1">
                 <ClipboardPaste size={13} />
                 <span>لصق (Ctrl+V)</span>
@@ -760,9 +769,9 @@ export default function DirectScannerModal({
 
           {/* Camera View Modal Area */}
           {showCamera && (
-            <div className="border border-blue-300 rounded-xl p-4 bg-slate-900 text-white relative animate-in fade-in">
+            <div className="border border-[#00adb5]/50 rounded-xl p-4 bg-[#141419] text-[#e0e0e6] relative animate-in fade-in">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-bold flex items-center gap-1.5 text-blue-300">
+                <span className="text-xs font-bold flex items-center gap-1.5 text-[#00adb5]">
                   <Camera size={15} />
                   <span>وجه الكاميرا نحو الورقة أو الوثيقة:</span>
                 </span>
@@ -785,7 +794,7 @@ export default function DirectScannerModal({
                 <button
                   type="button"
                   onClick={handleCaptureCamera}
-                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-2 cursor-pointer"
+                  className="px-6 py-2 bg-[#00adb5] hover:bg-[#00989f] text-slate-950 rounded-xl text-xs font-extrabold shadow-md flex items-center gap-2 cursor-pointer"
                 >
                   <Camera size={16} />
                   <span>التقاط صورة الورقة</span>
@@ -795,13 +804,13 @@ export default function DirectScannerModal({
           )}
 
           {/* معاينة المستند الممسوح */}
-          <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+          <div className="flex items-center justify-between pt-2 border-t border-[#2d2d35]">
             <div className="flex items-center gap-2">
-              <FileCheck size={16} className="text-emerald-600" />
-              <h4 className="text-xs font-bold text-slate-900">معاينة المستند الممسوح</h4>
+              <FileCheck size={16} className="text-[#00adb5]" />
+              <h4 className="text-xs font-bold text-[#e0e0e6]">معاينة المستند الممسوح (Live Preview)</h4>
             </div>
             {scannedImageUrl && (
-              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+              <span className="text-[11px] font-bold text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-500/30">
                 جاهز للحفظ
               </span>
             )}
@@ -813,8 +822,8 @@ export default function DirectScannerModal({
             onDrop={handleDrop}
             className={`relative border-2 border-dashed rounded-2xl p-4 transition-all flex flex-col items-center justify-center text-center min-h-[220px] ${
               scannedImageUrl 
-                ? 'border-emerald-300 bg-emerald-50/20' 
-                : 'border-slate-300 bg-slate-50 hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer'
+                ? 'border-emerald-500/40 bg-[#141419]' 
+                : 'border-[#2d2d35] bg-[#141419] hover:border-[#00adb5]/60 hover:bg-[#181820] cursor-pointer'
             }`}
             onClick={() => !scannedImageUrl && fileInputRef.current?.click()}
           >
@@ -825,15 +834,15 @@ export default function DirectScannerModal({
                   /* PDF Document Preview Card */
                   <div 
                     onClick={() => setShowEnlargedPreview(true)}
-                    className="relative group w-full h-64 overflow-hidden rounded-xl border border-slate-200 shadow-sm bg-slate-50 cursor-pointer hover:border-blue-400 transition-all flex flex-col"
+                    className="relative group w-full h-64 overflow-hidden rounded-xl border border-[#2d2d35] shadow-md bg-[#1e1e24] cursor-pointer hover:border-[#00adb5] transition-all flex flex-col"
                     title="انقر لتكبير ملف PDF وعرضه ملء الشاشة قبل الحفظ"
                   >
-                    <div className="bg-slate-100 px-3 py-1.5 border-b border-slate-200 flex items-center justify-between text-xs text-slate-700 shrink-0">
-                      <span className="font-bold flex items-center gap-1.5 text-red-600">
+                    <div className="bg-[#181820] px-3 py-1.5 border-b border-[#2d2d35] flex items-center justify-between text-xs text-slate-300 shrink-0">
+                      <span className="font-bold flex items-center gap-1.5 text-red-400">
                         <FileText size={15} />
                         <span>وثيقة PDF ممسوحة ضوئياً</span>
                       </span>
-                      <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded flex items-center gap-1">
+                      <span className="text-[10px] bg-[#28a745] text-white font-bold px-2 py-0.5 rounded flex items-center gap-1">
                         <CheckCircle2 size={11} />
                         جاهز للأرشفة
                       </span>
@@ -846,9 +855,9 @@ export default function DirectScannerModal({
                     />
 
                     {/* Hover Overlay */}
-                    <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-2xs rounded-xl">
-                      <span className="bg-white/95 text-slate-800 text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-lg">
-                        <Eye size={15} className="text-blue-600" />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-2xs rounded-xl">
+                      <span className="bg-[#1e1e24] text-[#e0e0e6] text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-lg border border-[#2d2d35]">
+                        <Eye size={15} className="text-[#00adb5]" />
                         عرض وتكبير ملف PDF قبل الحفظ
                       </span>
                     </div>
@@ -857,29 +866,29 @@ export default function DirectScannerModal({
                   /* Real Document Interactive Preview Card (Image) */
                   <div 
                     onClick={() => setShowEnlargedPreview(true)}
-                    className="relative group max-h-60 overflow-hidden rounded-xl border border-slate-200 shadow-sm bg-white p-2 cursor-pointer hover:border-blue-400 transition-all"
+                    className="relative group max-h-64 overflow-hidden rounded-xl border border-[#2d2d35] shadow-md bg-white p-2 cursor-pointer hover:border-[#00adb5] transition-all"
                     title="انقر لتكبير المستند وعرضه ملء الشاشة قبل الحفظ"
                   >
                     <img 
                       src={scannedImageUrl} 
-                      alt="Real Scanned Document" 
+                      alt="Scanned Document" 
                       style={{ 
                         transform: `rotate(${rotation}deg)`,
                         filter: isBwFilter ? 'grayscale(100%) contrast(140%) brightness(105%)' : 'none'
                       }}
-                      className="max-h-52 w-auto object-contain transition-all duration-200 rounded group-hover:scale-102"
+                      className="max-h-56 w-auto object-contain transition-all duration-200 rounded group-hover:scale-102"
                     />
                     
                     {/* Status Badge */}
-                    <div className="absolute top-3 right-3 bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 shadow-xs">
+                    <div className="absolute top-3 right-3 bg-[#28a745] text-white text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 shadow-md">
                       <CheckCircle2 size={12} />
-                      <span>ورقة حقيقية ممسوحة</span>
+                      <span>مستند ممسوح بدقة عالية</span>
                     </div>
 
                     {/* Hover Overlay with Eye to View Scanned Document */}
-                    <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-2xs rounded-xl">
-                      <span className="bg-white/95 text-slate-800 text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-lg">
-                        <Eye size={15} className="text-blue-600" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-2xs rounded-xl">
+                      <span className="bg-[#1e1e24] text-[#e0e0e6] text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-lg border border-[#2d2d35]">
+                        <Eye size={15} className="text-[#00adb5]" />
                         عرض وتكبير المستند قبل الحفظ
                       </span>
                     </div>
@@ -893,7 +902,7 @@ export default function DirectScannerModal({
                   <button
                     type="button"
                     onClick={() => setShowEnlargedPreview(true)}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    className="px-3 py-1.5 bg-[#00adb5] hover:bg-[#00989f] text-slate-950 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
                     title="عرض المستند بالحجم الكامل وتكبيره"
                   >
                     <Eye size={14} />
@@ -905,7 +914,7 @@ export default function DirectScannerModal({
                       <button
                         type="button"
                         onClick={() => setRotation(prev => (prev + 90) % 360)}
-                        className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-medium flex items-center gap-1 cursor-pointer shadow-2xs"
+                        className="px-2.5 py-1.5 bg-[#1e1e24] hover:bg-[#252530] text-slate-300 border border-[#2d2d35] rounded-lg text-xs font-medium flex items-center gap-1 cursor-pointer shadow-2xs"
                         title="تدوير الورقة 90 درجة"
                       >
                         <RotateCw size={13} />
@@ -917,8 +926,8 @@ export default function DirectScannerModal({
                         onClick={() => setIsBwFilter(prev => !prev)}
                         className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors shadow-2xs ${
                           isBwFilter 
-                            ? 'bg-slate-800 text-white' 
-                            : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+                            ? 'bg-[#00adb5] text-slate-950 font-bold' 
+                            : 'bg-[#1e1e24] hover:bg-[#252530] text-slate-300 border border-[#2d2d35]'
                         }`}
                         title="توضيح المستند وأبيض/أسود عالي الوضوح"
                       >
@@ -930,7 +939,7 @@ export default function DirectScannerModal({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-2.5 py-1.5 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-medium flex items-center gap-1 cursor-pointer shadow-2xs"
+                    className="px-2.5 py-1.5 bg-[#1e1e24] hover:bg-[#252530] text-slate-300 border border-[#2d2d35] rounded-lg text-xs font-medium flex items-center gap-1 cursor-pointer shadow-2xs"
                   >
                     <RefreshCw size={13} />
                     <span>تغيير الورقة</span>
@@ -939,15 +948,15 @@ export default function DirectScannerModal({
               </div>
             ) : (
               <div className="py-8 space-y-2.5">
-                <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto border border-blue-100 shadow-2xs">
+                <div className="w-12 h-12 rounded-xl bg-[#1e1e24] text-[#00adb5] flex items-center justify-center mx-auto border border-[#2d2d35] shadow-md">
                   <Printer size={22} />
                 </div>
                 <div>
-                  <h4 className="font-bold text-slate-800 text-xs">
+                  <h4 className="font-bold text-[#e0e0e6] text-xs">
                     لم يتم مسح مستند بعد
                   </h4>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    اضغط على <strong className="text-blue-700">"بدء المسح من الجهاز"</strong> أو <strong className="text-emerald-700">"اختبار المسح"</strong> بالأعلى
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    اضغط على <strong className="text-[#00adb5]">"ابدأ السحب من السكانر"</strong> بالأعلى لبدء السحب المباشر عبر WIA
                   </p>
                 </div>
               </div>
@@ -956,7 +965,7 @@ export default function DirectScannerModal({
 
           {/* اسم المستند واختصارات سريعة */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-800">
+            <label className="block text-xs font-bold text-[#e0e0e6]">
               اسم المستند:
             </label>
             <input 
@@ -964,7 +973,7 @@ export default function DirectScannerModal({
               value={docName}
               onChange={(e) => setDocName(e.target.value)}
               placeholder="مثال: شهادة ميلاد، عقد عمل، بطاقة هوية..."
-              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-3 py-2 bg-[#141419] border border-[#2d2d35] rounded-lg text-xs text-[#e0e0e6] placeholder-slate-500 focus:outline-none focus:border-[#00adb5] focus:ring-1 focus:ring-[#00adb5]"
               required
             />
             {/* اختصارات أسماء المستندات بنقرة واحدة */}
@@ -976,8 +985,8 @@ export default function DirectScannerModal({
                   onClick={() => setDocName(suggestion)}
                   className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1 ${
                     docName === suggestion
-                      ? 'bg-blue-600 text-white shadow-2xs'
-                      : 'bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200'
+                      ? 'bg-[#00adb5] text-slate-950 font-bold shadow-2xs'
+                      : 'bg-[#1e1e24] hover:bg-[#252530] text-slate-300 hover:text-[#00adb5] border border-[#2d2d35]'
                   }`}
                 >
                   {docName === suggestion && <Check size={11} />}
@@ -989,7 +998,7 @@ export default function DirectScannerModal({
 
           {/* Optional Notes */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
+            <label className="block text-xs font-bold text-slate-400 mb-1">
               ملاحظات إضافية (اختياري)
             </label>
             <input 
@@ -997,22 +1006,22 @@ export default function DirectScannerModal({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="مثال: نسخة أصلية من السكانر، تاريخ الإصدار..."
-              className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+              className="w-full px-3.5 py-2 bg-[#141419] border border-[#2d2d35] rounded-xl text-xs text-[#e0e0e6] placeholder-slate-500 focus:outline-none focus:border-[#00adb5] focus:ring-1 focus:ring-[#00adb5] transition-all"
             />
           </div>
 
           {/* Footer Action Buttons */}
-          <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-            <div className="text-[11px] text-slate-500 flex items-center gap-1">
+          <div className="flex items-center justify-between pt-3 border-t border-[#2d2d35]">
+            <div className="text-[11px] text-slate-400 flex items-center gap-1">
               <span>الموظف:</span>
-              <strong className="text-slate-800">{employeeName}</strong>
+              <strong className="text-[#00adb5]">{employeeName}</strong>
             </div>
 
             <div className="flex items-center gap-2.5">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 text-xs font-bold text-slate-700 hover:text-red-700 bg-white hover:bg-red-50 border border-slate-200 hover:border-red-200 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                className="px-4 py-2.5 text-xs font-bold text-slate-300 hover:text-red-400 bg-[#141419] hover:bg-red-950/40 border border-[#2d2d35] hover:border-red-800/50 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
                 title="تسكير القائمة والتراجع للخلف"
               >
                 <X size={14} />
@@ -1021,7 +1030,7 @@ export default function DirectScannerModal({
               <button
                 type="submit"
                 disabled={!scannedImageUrl}
-                className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-40 disabled:from-slate-400 disabled:to-slate-400 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer hover:shadow-md"
+                className="btn-success px-6 py-2.5 bg-[#28a745] hover:bg-[#218838] disabled:opacity-40 disabled:bg-slate-700 text-white rounded-xl text-xs font-extrabold transition-all shadow-md flex items-center gap-2 cursor-pointer hover:shadow-lg"
               >
                 <FileCheck size={16} />
                 <span>حفظ ورفع لملف الموظف</span>

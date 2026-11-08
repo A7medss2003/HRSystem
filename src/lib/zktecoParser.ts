@@ -176,8 +176,9 @@ export function matchEmployee(
   // 4. المطابقة بالرقم العسكري (للضباط وضباط الصف)
   if (normPin) {
     const byMilitary = employees.find(e => {
-      if (!e.militaryNumber) return false;
-      const milClean = normalizeId(e.militaryNumber);
+      const milNum = e.militaryInfo?.militaryNumber;
+      if (!milNum) return false;
+      const milClean = normalizeId(milNum);
       return (
         milClean.toLowerCase() === normPin.toLowerCase() ||
         (pinDigitsOnly && milClean.replace(/\D/g, '') === pinDigitsOnly)

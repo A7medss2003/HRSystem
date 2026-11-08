@@ -113,6 +113,7 @@ const defaultEmployee: Employee = {
     militaryNumber: '',
     rank: '',
     previousRank: '',
+    academicGrade: '',
     corps: '',
     unit: '',
     enlistmentDate: '',
@@ -467,9 +468,13 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
 
   const [formData, setFormData] = useState<Employee>(() => {
     if (employee) {
+      const mil = employee.militaryInfo ? { ...employee.militaryInfo } : { ...defaultEmployee.militaryInfo! };
+      if (employee.employmentCategory === 'ضابط صف' && !mil.academicGrade && mil.previousRank) {
+        mil.academicGrade = mil.previousRank;
+      }
       return {
         ...employee,
-        militaryInfo: employee.militaryInfo || { ...defaultEmployee.militaryInfo! }
+        militaryInfo: mil
       };
     }
     return {
@@ -964,19 +969,36 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
     'مشير'
   ];
 
-  // رتب ضباط الصف والجنود
+  // رتب ضباط الصف والجنود (التسلسل العسكري المعتمد 1 إلى 5)
   const ncoRanks = [
     'جندي',
     'جندي أول',
-    'عريف',
-    'رقيب',
-    'رقيب أول',
-    'مساعد',
-    'مساعد أول',
-    'رئيس عرفاء',
-    'رئيس عرفاء سرية',
+    'نائب عريف',
+    'رئيس عرفاء سارية',
     'رئيس عرفاء وحدة'
   ];
+
+  // خريطة الدرجة العلمية الافتراضية لكل رتبة لضباط الصف (تبدأ من 1 للجندي إلى 5 لرئيس عرفاء وحدة)
+  const ncoRankGradeMap: Record<string, string> = {
+    'جندي': '1',
+    'جندي أول': '2',
+    'نائب عريف': '3',
+    'رئيس عرفاء سارية': '4',
+    'رئيس عرفاء سرية': '4',
+    'رئيس عرفاء وحدة': '5'
+  };
+
+  // حساب أقل رقم درجة علمية لرتبة ضابط الصف المختارة (يبدأ من 1 للجندي حتى 5 لرئيس عرفاء وحدة)
+  const getMinAcademicGradeForRank = (rank?: string): number => {
+    if (!rank) return 1;
+    const r = rank.trim();
+    if (r.includes('وحدة')) return 5;
+    if (r.includes('سارية') || r.includes('سرية')) return 4;
+    if (r.includes('نائب عريف')) return 3;
+    if (r.includes('جندي أول') || r.includes('جندي اول')) return 2;
+    if (r.includes('جندي')) return 1;
+    return 1;
+  };
 
   // الصنف / السلاح العسكري
   const militaryCorpsOptions = [
@@ -1705,6 +1727,14 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
                       </div>
                     </div>
                   )}
+                  {formData.employmentCategory === 'ضابط صف' && (formData.militaryInfo?.academicGrade || formData.militaryInfo?.previousRank) && (
+                    <div className="bg-white border border-amber-200 px-3 py-1.5 rounded-lg text-center shadow-2xs">
+                      <div className="text-[10px] text-slate-400 font-medium">الدرجة العلمية</div>
+                      <div className="text-sm font-bold text-amber-900 font-mono">
+                        الدرجة {formData.militaryInfo.academicGrade || formData.militaryInfo.previousRank}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1748,7 +1778,7 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
                       readOnly={readOnly}
                       value={formData.militaryInfo?.rank || ''}
                       onChange={(e) => handleMilitaryChange('rank', e.target.value)}
-                      placeholder="اكتب الرتبة العسكرية (مثال: ملازم أول، نقيب، رائد، رقيب، رئيس عرفاء...)"
+                      placeholder="اكتب الرتبة العسكرية (مثال: ملازم أول، نقيب، رائد، جندي، رئيس عرفاء...)"
                       className="w-full bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm py-2 px-3 transition-all font-semibold text-slate-800"
                     />
                     <datalist id="military-ranks-list">
@@ -1760,29 +1790,39 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
 
                   {/* أزرار الرتب السريعة */}
                   {!readOnly && (
-                    <div className="pt-2">
-                      <div className="text-[11px] font-bold text-slate-500 mb-1.5 flex items-center gap-1">
-                        <span>اختيار سريع للرتبة:</span>
-                        <span className="text-[10px] text-slate-400 font-normal">
-                          {formData.employmentCategory === 'ضابط' ? '(رتب الضباط)' : formData.employmentCategory === 'ضابط صف' ? '(رتب ضباط الصف والجنود)' : '(جميع الرتب)'}
-                        </span>
-                      </div>
+                    <div className="pt-1.5">
                       <div className="flex flex-wrap gap-1.5">
-                        {(formData.employmentCategory === 'ضابط صف' ? ncoRanks : officerRanks).map(rank => {
+                        {(formData.employmentCategory === 'ضابط صف' ? ncoRanks : officerRanks).map((rank, idx) => {
                           const isSelected = formData.militaryInfo?.rank === rank;
+                          const isNco = formData.employmentCategory === 'ضابط صف';
                           return (
                             <button
                               key={rank}
                               type="button"
-                              onClick={() => handleMilitaryChange('rank', rank)}
+                              onClick={() => {
+                                handleMilitaryChange('rank', rank);
+                                if (isNco) {
+                                  const minG = getMinAcademicGradeForRank(rank);
+                                  handleMilitaryChange('academicGrade', String(minG));
+                                  handleMilitaryChange('previousRank', String(minG));
+                                }
+                              }}
                               className={clsx(
-                                "text-xs px-2.5 py-1 rounded-lg border font-semibold transition-all cursor-pointer",
+                                "text-xs px-2.5 py-1 rounded-lg border font-semibold transition-all cursor-pointer flex items-center gap-1.5",
                                 isSelected
                                   ? "bg-amber-600 text-white border-amber-600 shadow-2xs scale-102"
                                   : "bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-900"
                               )}
                             >
-                              {rank}
+                              {isNco && (
+                                <span className={clsx(
+                                  "w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold",
+                                  isSelected ? "bg-white/30 text-white" : "bg-amber-100 text-amber-900"
+                                )}>
+                                  {idx + 1}
+                                </span>
+                              )}
+                              <span>{rank}</span>
                             </button>
                           );
                         })}
@@ -1791,14 +1831,60 @@ export default function EmployeeDetail({ employee, onBack, onSave, readOnly = fa
                   )}
                 </div>
 
-                {/* الرتبة السابقة */}
-                <InputField
-                  readOnly={readOnly}
-                  label="الرتبة السابقة"
-                  placeholder="الرتبة قبل آخر ترقية"
-                  value={formData.militaryInfo?.previousRank || ''}
-                  onChange={(v: string) => handleMilitaryChange('previousRank', v)}
-                />
+                {/* الرتبة السابقة للضباط أو الدرجة العلمية لضباط الصف */}
+                {formData.employmentCategory === 'ضابط صف' ? (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+                      <span>الدرجة العلمية</span>
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="number"
+                        min={getMinAcademicGradeForRank(formData.militaryInfo?.rank)}
+                        readOnly={readOnly}
+                        value={formData.militaryInfo?.academicGrade || (formData.militaryInfo?.rank ? String(getMinAcademicGradeForRank(formData.militaryInfo.rank)) : '')}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          handleMilitaryChange('academicGrade', val);
+                          handleMilitaryChange('previousRank', val);
+                        }}
+                        placeholder="أدخل أو اختر الدرجة..."
+                        className="w-full bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm py-2 pr-3 pl-28 transition-all font-semibold text-slate-800"
+                      />
+                      {/* زر نهاية الحقل: قائمة منسدلة بالأرقام تبدأ بأقل رقم لرتبته */}
+                      <div className="absolute left-1 inset-y-1 flex items-center">
+                        <select
+                          disabled={readOnly}
+                          value={formData.militaryInfo?.academicGrade || (formData.militaryInfo?.rank ? String(getMinAcademicGradeForRank(formData.militaryInfo.rank)) : '')}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            handleMilitaryChange('academicGrade', val);
+                            handleMilitaryChange('previousRank', val);
+                          }}
+                          className="h-full bg-slate-100 hover:bg-amber-50 hover:text-amber-900 border border-slate-200 text-xs font-bold text-slate-700 rounded px-2 cursor-pointer outline-none transition-colors"
+                          title="قائمة الدرجات العلمية"
+                        >
+                          {Array.from(
+                            { length: 16 }, 
+                            (_, i) => getMinAcademicGradeForRank(formData.militaryInfo?.rank) + i
+                          ).map((g) => (
+                            <option key={g} value={g}>
+                              الدرجة {g}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <InputField
+                    readOnly={readOnly}
+                    label="الرتبة السابقة"
+                    placeholder="الرتبة قبل آخر ترقية"
+                    value={formData.militaryInfo?.previousRank || ''}
+                    onChange={(v: string) => handleMilitaryChange('previousRank', v)}
+                  />
+                )}
 
                 {/* تاريخ آخر ترقية */}
                 <InputField
